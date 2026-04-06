@@ -33,6 +33,34 @@
             <h2>SYSTEM UPGRADE</h2>
             <div class="card-container" id="cards-container"></div>
         </div>
+        <div id="pause-menu" class="overlay hidden">
+            <div class="pause-layout">
+                <div class="pause-left-panel">
+                    <div class="pause-box player-info-box">
+                        <div class="box-title">Player Info</div>
+                        <div id="pause-stats" class="pause-stats"></div>
+                    </div>
+                    <button id="resume-btn" class="pause-btn">Continue</button>
+                    <button id="restart-btn" class="pause-btn">Restart</button>
+                </div>
+                <div class="pause-right-panel">
+                    <div class="pause-box inventory-box">
+                        <div class="box-title">Player Ability<br>Inventory</div>
+                        <div id="pause-skills" class="pause-skills"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="dev-tools" class="dev-tools hidden">
+            <div class="dev-tools-header">⚙ DEV TOOLS</div>
+            <div class="dev-tools-body">
+                <button id="dev-lvup" class="dev-btn">Level UP</button>
+                <button id="dev-lvup5" class="dev-btn">Level +5</button>
+                <button id="dev-hp" class="dev-btn">HP Full</button>
+                <button id="dev-kill-all" class="dev-btn">Kill All</button>
+                <div class="dev-info" id="dev-info"></div>
+            </div>
+        </div>
     </div>
     <!-- JavaScript Files -->
     <script src="js/audio.js"></script>

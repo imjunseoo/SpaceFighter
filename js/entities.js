@@ -57,6 +57,18 @@ class Player {
         ctx.restore();
     }
 
+    drawDeath(ctx) {
+        ctx.save(); ctx.translate(this.x, this.y);
+        ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = Math.random() < 0.5 ? '#fff' : this.color; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = Math.random() < 0.5 ? '#fff' : this.neonColor; ctx.stroke();
+        ctx.rotate(Math.atan2(this.dirY, this.dirX));
+        ctx.beginPath(); ctx.arc(0, 0, this.radius, -Math.PI / 3, Math.PI / 3);
+        ctx.lineTo(this.radius + 8, 0); ctx.closePath();
+        ctx.fillStyle = '#fff'; ctx.shadowBlur = 20; ctx.shadowColor = '#fff'; ctx.fill();
+        ctx.restore();
+    }
+
     takeDamage(amount) {
         if (this.invincible > 0) return false;
         this.hp -= amount; this.invincible = 30;
@@ -88,10 +100,10 @@ class Player {
 }
 
 class Enemy {
-    constructor(x, y, type, gameTime) {
+    constructor(x, y, type, playerLevel) {
         this.x = x; this.y = y; this.type = type;
-        this.speed = (Math.random() * 1 + 1.5 + (gameTime / 120));
-        this.maxHp = 10 + Math.floor(gameTime / 30) * 5;
+        this.speed = (Math.random() * 1 + 1.5 + (playerLevel * 0.1));
+        this.maxHp = 10 + (playerLevel - 1) * 8;
         this.radius = 10; this.color = '#f00'; this.knockbackResist = 1;
 
         if (type === 'ranged') {
@@ -103,6 +115,13 @@ class Enemy {
         } else if (type === 'elite') {
             this.color = '#f0f'; this.radius = 24; this.speed *= 0.6; this.maxHp *= 10;
             this.knockbackResist = 0.2;
+        } else if (type === 'boss') {
+            this.color = '#fbc531'; this.radius = 80; this.speed = 0.5;
+            this.maxHp = 5000; this.knockbackResist = 0; // 넉백 완전 무시
+            this.fireCooldown = 180; // 3초마다 3갈래 레이저
+            this.burstCooldown = 240; // 폭발 쿨타임
+            this.trackCooldown = 0; // 지속 추적 레이저 쿨타임
+            this.lastHpThreshold = 10; // HP 10% 단위 추적 (10=100%, 9=90%...)
         }
         this.hp = this.maxHp; this.knockbackX = 0; this.knockbackY = 0;
     }
@@ -132,6 +151,62 @@ class Enemy {
                 this.x += Math.cos(angle) * this.speed; this.y += Math.sin(angle) * this.speed;
                 if (dist < 60) this.fuse = 30;
             }
+        } else if (this.type === 'boss') {
+            // 보스는 넉백 무시
+            this.knockbackX = 0; this.knockbackY = 0;
+            // 보스 이동: 플레이어를 천천히 추적
+            this.x += Math.cos(angle) * this.speed; this.y += Math.sin(angle) * this.speed;
+            // 보스 경계 제한
+            this.x = Utils.clamp(this.x, this.radius, CONFIG.CANVAS_WIDTH - this.radius);
+            this.y = Utils.clamp(this.y, this.radius, CONFIG.CANVAS_HEIGHT - this.radius);
+
+            // 패턴 1: 3갈래 레이저 (상시)
+            if (this.fireCooldown > 0) this.fireCooldown--;
+            else {
+                for (let i = -1; i <= 1; i++) {
+                    const spreadAngle = angle + i * (Math.PI / 6);
+                    const tx = this.x + Math.cos(spreadAngle) * 500;
+                    const ty = this.y + Math.sin(spreadAngle) * 500;
+                    game.enemyProjectiles.push(new LaserTelegraph(this.x, this.y, tx, ty, 60, 25));
+                }
+                this.fireCooldown = 180;
+            }
+
+            // 패턴 2: 근접 폭발 (HP 50% 이하)
+            if (this.hp <= this.maxHp * 0.5) {
+                if (this.burstCooldown > 0) this.burstCooldown--;
+                else {
+                    if (dist < 150 && !player.isDashing && player.invincible <= 0) {
+                        player.takeDamage(20);
+                        if (player.hp <= 0) game.triggerGameOver();
+                        game.updateHUD();
+                    }
+                    game.skillManager.createParticles(this.x, this.y, '#fbc531');
+                    game.skillManager.createParticles(this.x, this.y, '#f00');
+                    game.skillManager.createParticles(this.x, this.y, '#fa0');
+                    this.burstCooldown = 120;
+                }
+            }
+
+            // 패턴 3: 지속 추적 얇은 레이저 (상시, 빠른 주기)
+            if (this.trackCooldown > 0) this.trackCooldown--;
+            else {
+                game.enemyProjectiles.push(new LaserTelegraph(this.x, this.y, player.x, player.y, 30, 10));
+                this.trackCooldown = 60; // 1초마다
+            }
+
+            // HP 10% 감소마다 잡몹 소환
+            const currentThreshold = Math.floor((this.hp / this.maxHp) * 10);
+            if (currentThreshold < this.lastHpThreshold) {
+                const spawnCount = 10 + Math.floor(Math.random() * 6); // 10~15마리
+                const types = ['normal', 'normal', 'normal', 'ranged', 'bomber'];
+                for (let i = 0; i < spawnCount; i++) {
+                    const sp = Utils.getSpawnPos(CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
+                    const t = types[Math.floor(Math.random() * types.length)];
+                    game.enemies.push(new Enemy(sp.x, sp.y, t, player.level));
+                }
+                this.lastHpThreshold = currentThreshold;
+            }
         } else { this.x += Math.cos(angle) * this.speed; this.y += Math.sin(angle) * this.speed; }
     }
 
@@ -144,8 +219,63 @@ class Enemy {
             const scale = 1.2 + (30 - this.fuse) / 100; ctx.scale(scale, scale);
         }
         ctx.beginPath();
-        if (this.type === 'elite') { for (let i = 0; i < 6; i++) ctx.lineTo(this.radius * Math.cos(i * Math.PI / 3), this.radius * Math.sin(i * Math.PI / 3)); }
-        else { ctx.moveTo(this.radius, 0); ctx.lineTo(-this.radius, this.radius * 0.7); ctx.lineTo(-this.radius * 0.5, 0); ctx.lineTo(-this.radius, -this.radius * 0.7); }
+        if (this.type === 'boss') {
+            // 1. 메인 쉘 (Casing) - 흰색 유선형
+            ctx.fillStyle = '#f5f5f5';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, this.radius, this.radius * 0.75, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // 2. 내부 어두운 코어 (Inner Core)
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.ellipse(this.radius * 0.2, 0, this.radius * 0.6, this.radius * 0.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 3. 센서 아이 (Eye Sensor) - 노란색 발광
+            const eyeX = this.radius * 0.5;
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = '#fbbf24';
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(eyeX, 0, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 센서 내부 디테일 (주황색 중심)
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#f97316';
+            ctx.beginPath();
+            ctx.arc(eyeX, 0, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 4. 배선/디테일 (Support Lines)
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-this.radius * 0.5, -this.radius * 0.4);
+            ctx.quadraticCurveTo(-this.radius * 1.2, -this.radius * 0.8, -this.radius * 1.4, 0);
+            ctx.stroke();
+
+            // 5. HP 바 표시 (보스 전용)
+            ctx.rotate(-angle); // 회전 복구하여 HP바가 수평으로 보이도록
+            const barW = 160, barH = 10;
+            ctx.fillStyle = '#111'; ctx.fillRect(-barW / 2, -this.radius - 30, barW, barH);
+            ctx.fillStyle = '#fbbf24'; ctx.fillRect(-barW / 2, -this.radius - 30, barW * (this.hp / this.maxHp), barH);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(-barW / 2, -this.radius - 30, barW, barH);
+            
+            ctx.restore();
+            return; // 보스는 여기서 드로잉 종료
+        }
+
+        ctx.beginPath();
+        if (this.type === 'elite') {
+            for (let i = 0; i < 6; i++) ctx.lineTo(this.radius * Math.cos(i * Math.PI / 3), this.radius * Math.sin(i * Math.PI / 3));
+        } else {
+            ctx.moveTo(this.radius, 0); ctx.lineTo(-this.radius, this.radius * 0.7); ctx.lineTo(-this.radius * 0.5, 0); ctx.lineTo(-this.radius, -this.radius * 0.7);
+        }
         ctx.closePath();
         ctx.fillStyle = this.hp < this.maxHp ? '#fff' : (this.type === 'bomber' && this.fuse > 0 ? '#f00' : '#111');
         ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.shadowBlur = 10; ctx.shadowColor = color; ctx.stroke(); 
@@ -163,8 +293,8 @@ class Enemy {
 }
 
 class Gem {
-    constructor(x, y) {
-        this.x = x; this.y = y; this.size = 6; this.expValue = 1;
+    constructor(x, y, expValue = 1) {
+        this.x = x; this.y = y; this.size = 6; this.expValue = expValue;
         this.isAttracted = false; this.isCollected = false; this.color = '#4ade80';
     }
     update(player) {

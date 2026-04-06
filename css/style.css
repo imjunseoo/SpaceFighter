@@ -87,3 +87,71 @@ button.start-btn:hover { background-color: #fff; color: #000; }
     position: absolute; top: -12px; right: 15px; background-color: #fbbf24; color: #000;
     font-size: 0.75rem; font-weight: 800; padding: 3px 8px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
 }
+
+/* Pause Menu UI - Split Layout */
+.pause-layout {
+    display: flex; gap: 15px; width: 80%; max-width: 1200px; max-height: 90%; margin: 0 auto;
+    align-items: stretch;
+}
+.pause-left-panel {
+    display: flex; flex-direction: column; gap: 15px; flex: 1;
+}
+.pause-right-panel {
+    display: flex; flex: 2;
+}
+.pause-box {
+    background-color: #4a4a4a; border: 5px solid #1a1a1a; 
+    padding: 20px; box-sizing: border-box; color: #1a1a1a;
+}
+.player-info-box { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; }
+.inventory-box { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+
+.box-title { font-size: 2.2rem; font-weight: 900; color: #1a1a1a; text-align: center; margin-bottom: 15px; }
+
+.pause-btn {
+    background-color: #4a4a4a; border: 5px solid #1a1a1a; 
+    padding: 15px; font-size: 1.8rem; font-weight: 900; color: #1a1a1a;
+    cursor: pointer; transition: all 0.1s; text-align: center;
+}
+.pause-btn:hover { background-color: #5a5a5a; color: #000; }
+
+.pause-stats { color: #111; margin-bottom: 10px; text-align: left; line-height: 1.6; font-size: 1.2rem; font-weight: bold; }
+.pause-stats div { border-bottom: 1px solid rgba(0,0,0,0.2); padding-bottom: 5px; margin-bottom: 5px; }
+.pause-skills { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%; margin-top: 20px; }
+.pause-skills .acquired-icon { width: 50px; height: 50px; font-size: 30px; border: 3px solid #1a1a1a; background-color: #333; position: relative; }
+.pause-skills .skill-count { font-size: 14px; background: #fbbf24; color: #000; border-color: #1a1a1a; }
+
+/* Acquired Skill Tooltip */
+.acquired-icon::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 120%; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff; padding: 6px 12px;
+    border: 1px solid var(--neon-blue); border-radius: 4px;
+    font-size: 14px; white-space: nowrap; pointer-events: none;
+    opacity: 0; transition: opacity 0.2s; z-index: 200;
+}
+.acquired-icon:hover::after { opacity: 1; }
+
+/* Dev Tools */
+.dev-tools {
+    position: absolute; top: 60px; left: 15px; z-index: 200;
+    background: rgba(0, 0, 0, 0.9); border: 2px solid #f0f;
+    border-radius: 8px; padding: 0; min-width: 180px;
+    box-shadow: 0 0 20px rgba(255, 0, 255, 0.3);
+    pointer-events: auto;
+}
+.dev-tools-header {
+    background: #f0f; color: #000; font-weight: 900; font-size: 0.9rem;
+    padding: 6px 12px; text-align: center; letter-spacing: 2px;
+}
+.dev-tools-body { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.dev-btn {
+    background: #1a1a2e; border: 1px solid #f0f; color: #f0f;
+    padding: 8px 12px; font-size: 0.85rem; font-weight: bold; cursor: pointer;
+    transition: all 0.15s; border-radius: 4px; text-align: left;
+}
+.dev-btn:hover { background: #f0f; color: #000; }
+.dev-info { color: #aaa; font-size: 0.75rem; margin-top: 4px; line-height: 1.5; }

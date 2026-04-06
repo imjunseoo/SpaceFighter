@@ -21,6 +21,19 @@ class SkillManager {
     createParticles(x, y, color) {
         for (let i = 0; i < 8; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10, life: 1.0, decay: Math.random() * 0.05 + 0.05, color, size: Math.random() * 3 + 1 });
     }
+    createShatterParticles(x, y, color) {
+        for (let i = 0; i < 40; i++) {
+            this.particles.push({ 
+                x, y, 
+                vx: (Math.random() - 0.5) * 20, 
+                vy: (Math.random() - 0.5) * 20, 
+                life: 1.0, 
+                decay: Math.random() * 0.02 + 0.02, 
+                color: Math.random() < 0.3 ? '#fff' : color, 
+                size: Math.random() * 5 + 2 
+            });
+        }
+    }
     createFloatingText(x, y, text, isCrit = false, color = '#fff') { this.floatingTexts.push({ x, y, text, life: 1.0, vy: -1, isCrit, color }); }
     updateAndDraw(ctx) {
         this.attacks.forEach((atk, i) => {
@@ -54,10 +67,26 @@ class Game {
             cards: document.getElementById('cards-container'), startBtn: document.getElementById('start-btn'),
             hp: document.getElementById('hp-bar'), exp: document.getElementById('exp-bar'),
             score: document.getElementById('score'), timer: document.getElementById('timer'), level: document.getElementById('player-level'),
-            acquiredSkills: document.getElementById('acquired-skills-container')
+            acquiredSkills: document.getElementById('acquired-skills-container'),
+            pauseMenu: document.getElementById('pause-menu'), resumeBtn: document.getElementById('resume-btn'),
+            restartBtn: document.getElementById('restart-btn')
         };
         this.ui.startBtn.onclick = () => { this.ui.startBtn.blur(); this.init(); };
-        window.addEventListener('keydown', (e) => this.handleLevelUpKey(e));
+        this.ui.resumeBtn.onclick = () => { this.ui.resumeBtn.blur(); if(this.state === 'PAUSED_MENU') this.togglePause(); };
+        this.ui.restartBtn.onclick = () => { 
+            this.ui.restartBtn.blur(); 
+            if(this.state === 'PAUSED_MENU') { 
+                this.ui.pauseMenu.classList.add('hidden'); 
+                this.init(); 
+            } 
+        };
+        window.addEventListener('keydown', (e) => this.handleUIKeys(e));
+        this.devToolsOpen = false;
+        this.devUI = document.getElementById('dev-tools');
+        document.getElementById('dev-lvup').onclick = () => { if (this.player) { this.player.level++; this.player.exp = 0; this.showLevelUpMenu(); this.updateDevInfo(); } };
+        document.getElementById('dev-lvup5').onclick = () => { if (this.player) { for (let i = 0; i < 5; i++) { this.player.level++; } this.player.exp = 0; this.showLevelUpMenu(); this.updateDevInfo(); } };
+        document.getElementById('dev-hp').onclick = () => { if (this.player) { this.player.hp = this.player.maxHp; this.updateHUD(); this.updateDevInfo(); } };
+        document.getElementById('dev-kill-all').onclick = () => { this.enemies.forEach(e => { this.skillManager.createParticles(e.x, e.y, e.color); this.score++; }); this.enemies = []; this.updateHUD(); this.updateDevInfo(); };
         this.state = 'TITLE'; 
         this.lastFrameTime = performance.now();
         this.fpsCap = 1000 / 60;
@@ -66,18 +95,42 @@ class Game {
     init() {
         this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
         this.enemies = []; this.gems = []; this.enemyProjectiles = []; this.score = 0; this.frameCount = 0; this.gameTime = 0;
+        this.bossSpawned = false; this.bossDefeated = false;
         this.updateHUD(); this.ui.layer.classList.add('hidden'); this.ui.levelup.classList.add('hidden'); this.state = 'PLAYING';
         this.ui.acquiredSkills.innerHTML = '';
         this.audioManager.startBGM();
     }
     spawnEnemy() {
+        const lv = this.player.level;
+
+        // Lv 15: 보스전 진입
+        if (lv >= 15 && !this.bossSpawned && !this.bossDefeated) {
+            this.enemies = []; // 기존 적 전부 제거
+            this.enemyProjectiles = [];
+            const bx = this.canvas.width / 2, by = 120;
+            this.enemies.push(new Enemy(bx, by, 'boss', lv));
+            this.bossSpawned = true;
+            return;
+        }
+
+        // 보스가 살아있는 동안 추가 스폰 중단
+        if (this.bossSpawned && !this.bossDefeated) return;
+
         const { x, y } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
         let type = 'normal';
         const r = Math.random();
-        if (this.gameTime > 120 && this.frameCount % 600 === 0) type = 'elite';
-        else if (this.gameTime > 60 && r < 0.2) type = 'bomber';
-        else if (this.gameTime > 30 && r < 0.15) type = 'ranged';
-        this.enemies.push(new Enemy(x, y, type, this.gameTime));
+
+        if (lv >= 12) {
+            if (this.frameCount % 600 === 0) type = 'elite';
+            else if (r < 0.3) type = 'bomber';
+            else if (r < 0.5) type = 'ranged';
+        } else if (lv >= 7) {
+            if (r < 0.2) type = 'bomber';
+            else if (r < 0.4) type = 'ranged';
+        } else if (lv >= 3) {
+            if (r < 0.25) type = 'ranged';
+        }
+        this.enemies.push(new Enemy(x, y, type, lv));
     }
     showLevelUpMenu() {
         this.state = 'PAUSED'; this.ui.levelup.classList.remove('hidden'); this.ui.cards.innerHTML = '';
@@ -107,11 +160,46 @@ class Game {
         for (let x = 0; x <= this.canvas.width; x += 40) { this.ctx.moveTo(x, 0); this.ctx.lineTo(x, this.canvas.height); }
         for (let y = 0; y <= this.canvas.height; y += 40) { const off = (this.frameCount * 0.5) % 40; this.ctx.moveTo(0, y + off); this.ctx.lineTo(this.canvas.width, y + off); }
         this.ctx.stroke();
-        if (this.state === 'TITLE' || this.state === 'GAMEOVER') { if (this.player) this.player.draw(this.ctx, this.frameCount); return; }
-        if (this.state === 'PAUSED') { this.gems.forEach(g => g.draw(this.ctx)); this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); this.enemyProjectiles.forEach(p => p.draw(this.ctx)); this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx); return; }
+        if (this.state === 'TITLE') { if (this.player) this.player.draw(this.ctx, this.frameCount); return; }
+        
+        if (this.state === 'PLAYER_DYING') {
+            this.gems.forEach(g => g.draw(this.ctx)); 
+            this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); 
+            this.enemyProjectiles.forEach(p => p.draw(this.ctx));
+            
+            this.player.deathTimer--;
+            this.ctx.save();
+            this.ctx.translate((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12);
+            this.player.drawDeath(this.ctx);
+            this.ctx.restore();
+            
+            this.skillManager.updateAndDraw(this.ctx);
+            
+            if (this.player.deathTimer <= 0) {
+                this.state = 'GAMEOVER';
+                this.skillManager.createShatterParticles(this.player.x, this.player.y, this.player.neonColor);
+                this.audioManager.playHit(); // Shatter sound
+                setTimeout(() => {
+                    this.ui.layer.classList.remove('hidden'); document.getElementById('game-title').innerText = "SYSTEM FAILED";
+                    this.ui.layer.querySelector('p').innerHTML = `LV: ${this.player.level} / 생존 시간: ${this.ui.timer.innerText} / 킬수: ${this.score}`;
+                    this.ui.startBtn.innerText = "REBOOT SYSTEM";
+                }, 1000);
+            }
+            return;
+        }
+
+        if (this.state === 'GAMEOVER') {
+            this.gems.forEach(g => g.draw(this.ctx)); 
+            this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); 
+            this.enemyProjectiles.forEach(p => p.draw(this.ctx));
+            this.skillManager.updateAndDraw(this.ctx);
+            return;
+        }
+
+        if (this.state === 'PAUSED' || this.state === 'PAUSED_MENU') { this.gems.forEach(g => g.draw(this.ctx)); this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); this.enemyProjectiles.forEach(p => p.draw(this.ctx)); this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx); return; }
         this.frameCount++; if (this.frameCount % 60 === 0) { this.gameTime++; this.updateHUD(); }
         this.player.update(this.input); if (this.input.keys.z && this.player.cooldown <= 0) { this.skillManager.triggerAttack(this.player); this.audioManager.playSwordSlash(); this.player.cooldown = this.player.maxCooldown; }
-        if (this.frameCount % Math.max(10, 40 - Math.floor(this.gameTime / 5)) === 0) this.spawnEnemy();
+        if (this.frameCount % Math.max(12, 45 - (this.player.level * 2)) === 0) this.spawnEnemy();
         this.enemyProjectiles.forEach((p, i) => { p.update(this.player, this); p.draw(this.ctx); if (p.state === 'DONE') this.enemyProjectiles.splice(i, 1); });
         this.skillManager.attacks.forEach(atk => {
             // 공격 발생 후 초기 3프레임 동안 판정 수행 (판정 누락 방지)
@@ -139,8 +227,23 @@ class Game {
                             e.knockbackX = Math.cos(a) * 15; e.knockbackY = Math.sin(a) * 15;
                             if (e.hp <= 0) {
                                 this.skillManager.createParticles(e.x, e.y, e.color);
-                                if (e.type === 'elite') for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15));
-                                else this.gems.push(new Gem(e.x, e.y));
+                                // 적 종류별 경험치 차등 Gem 드롭
+                                let gemValue = 1;
+                                if (e.type === 'ranged') gemValue = 3;
+                                else if (e.type === 'bomber') gemValue = 5;
+                                else if (e.type === 'elite') gemValue = 10;
+                                else if (e.type === 'boss') gemValue = 1; // 보스는 대량 드롭
+
+                                if (e.type === 'elite') {
+                                    for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gemValue));
+                                } else if (e.type === 'boss') {
+                                    // 보스 처치: 대량 Gem 드롭 + 무한 모드 전환
+                                    for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
+                                    this.skillManager.createShatterParticles(e.x, e.y, e.color);
+                                    this.bossDefeated = true;
+                                } else {
+                                    this.gems.push(new Gem(e.x, e.y, gemValue));
+                                }
                                 this.enemies.splice(j, 1); this.score++;
                                 if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
                                     this.player.hp = Math.min(this.player.maxHp, this.player.hp + 5);
@@ -167,20 +270,49 @@ class Game {
     triggerGameOver() {
         this.audioManager.stopBGM();
         this.audioManager.playHit();
-        this.state = 'GAMEOVER'; this.skillManager.createParticles(this.player.x, this.player.y, this.player.neonColor);
-        setTimeout(() => {
-            this.ui.layer.classList.remove('hidden'); document.getElementById('game-title').innerText = "SYSTEM FAILED";
-            this.ui.layer.querySelector('p').innerHTML = `LV: ${this.player.level} / 생존 시간: ${this.ui.timer.innerText} / 킬수: ${this.score}`;
-            this.ui.startBtn.innerText = "REBOOT SYSTEM";
-        }, 1000);
+        this.state = 'PLAYER_DYING'; 
+        this.player.deathTimer = 30; // 0.5s freeze
     }
-    handleLevelUpKey(e) {
+    handleUIKeys(e) {
+        if (e.key === 'Enter') {
+            this.devToolsOpen = !this.devToolsOpen;
+            this.devUI.classList.toggle('hidden', !this.devToolsOpen);
+            if (this.devToolsOpen) this.updateDevInfo();
+            return;
+        }
+        if (e.key === 'Escape') {
+            if (this.state === 'PLAYING' || this.state === 'PAUSED_MENU') this.togglePause();
+            return;
+        }
         if (this.state !== 'PAUSED') return;
         if (['1', '2', '3'].includes(e.key)) {
             const idx = parseInt(e.key) - 1;
             const cards = this.ui.cards.querySelectorAll('.skill-card');
             if (cards[idx]) cards[idx].click();
         }
+    }
+    togglePause() {
+        if (this.state === 'PLAYING') {
+            this.state = 'PAUSED_MENU';
+            this.ui.pauseMenu.classList.remove('hidden');
+            this.updatePauseMenu();
+        } else if (this.state === 'PAUSED_MENU') {
+            this.state = 'PLAYING';
+            this.ui.pauseMenu.classList.add('hidden');
+            this.player.invincible = 30; // 0.5초 무적시간
+        }
+    }
+    updatePauseMenu() {
+        const p = this.player, c = CONFIG.PLAYER;
+        document.getElementById('pause-stats').innerHTML = `
+            <div style="font-size:1.1rem;">HP: ${p.hp} / ${p.maxHp} <span style="color:#0a0">(+${p.maxHp - c.MAX_HP})</span></div>
+            <div style="font-size:1.1rem;">공격력: ${p.attackDamage} <span style="color:#0a0">(+${p.attackDamage - c.ATTACK_DAMAGE})</span></div>
+            <div style="font-size:1.1rem;">공격 범위: ${p.attackRange.toFixed(0)} <span style="color:#0a0">(+${(p.attackRange - c.ATTACK_RANGE).toFixed(0)})</span></div>
+            <div style="font-size:1.1rem;">이동 속도: ${p.speed.toFixed(1)} <span style="color:#0a0">(+${(p.speed - c.SPEED).toFixed(1)})</span></div>
+            <div style="font-size:1.1rem;">치명타 확률: ${(p.critChance * 100).toFixed(0)}%</div>
+            <div style="font-size:1.1rem;">흡혈 확률: ${(p.vampireChance * 100).toFixed(0)}%</div>
+        `;
+        document.getElementById('pause-skills').innerHTML = this.ui.acquiredSkills.innerHTML || '<div style="color:#555; text-align:center; width:100%; margin-top:50px;">No Abilities Acquired</div>';
     }
     addAcquiredSkillUI(skill) {
         let existing = this.ui.acquiredSkills.querySelector(`.acquired-icon[data-id="${skill.id}"]`);
@@ -199,10 +331,17 @@ class Game {
             const el = document.createElement('div');
             el.className = 'acquired-icon';
             el.dataset.id = skill.id;
+            
+            const cleanDesc = skill.desc.replace(/<[^>]+>/g, '');
+            el.dataset.tooltip = `${skill.name}: ${cleanDesc}`;
+            
             el.innerHTML = skill.icon;
-            el.title = skill.name;
             this.ui.acquiredSkills.appendChild(el);
         }
+    }
+    updateDevInfo() {
+        if (!this.player) return;
+        document.getElementById('dev-info').innerHTML = `Lv: ${this.player.level} | HP: ${this.player.hp}/${this.player.maxHp}<br>Enemies: ${this.enemies.length} | State: ${this.state}<br>Boss: ${this.bossSpawned ? (this.bossDefeated ? 'Defeated' : 'Alive') : 'Not yet'}`;
     }
 }
 window.onload = () => { new Game(); };
