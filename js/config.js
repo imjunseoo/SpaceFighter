@@ -1,10 +1,10 @@
 const CONFIG = {
-    CANVAS_WIDTH: 800,
-    CANVAS_HEIGHT: 600,
+    CANVAS_WIDTH: 1920,
+    CANVAS_HEIGHT: 1080,
     GRID_SIZE: 40,
     PLAYER: {
-        START_X: 400,
-        START_Y: 300,
+        START_X: 960,
+        START_Y: 540,
         RADIUS: 16,
         SPEED: 4,
         MAX_HP: 100,

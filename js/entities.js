@@ -148,7 +148,17 @@ class Enemy {
         else { ctx.moveTo(this.radius, 0); ctx.lineTo(-this.radius, this.radius * 0.7); ctx.lineTo(-this.radius * 0.5, 0); ctx.lineTo(-this.radius, -this.radius * 0.7); }
         ctx.closePath();
         ctx.fillStyle = this.hp < this.maxHp ? '#fff' : (this.type === 'bomber' && this.fuse > 0 ? '#f00' : '#111');
-        ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.shadowBlur = 10; ctx.shadowColor = color; ctx.stroke(); ctx.restore();
+        ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.shadowBlur = 10; ctx.shadowColor = color; ctx.stroke(); 
+        
+        ctx.shadowBlur = 0;
+        if (this.type === 'bomber' && this.fuse > 0) {
+            ctx.strokeStyle = `rgba(255, 0, 0, ${0.1 + (60 - this.fuse) / 60 * 0.4})`;
+            ctx.fillStyle = `rgba(255, 0, 0, ${0.05 + (60 - this.fuse) / 60 * 0.1})`;
+            ctx.beginPath();
+            ctx.arc(0, 0, 100, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+        }
+        ctx.restore();
     }
 }
 
@@ -183,6 +193,7 @@ class LaserTelegraph {
         if (this.state === 'WARNING') {
             if (--this.delay <= 0) {
                 this.state = 'FIRING';
+                game.audioManager.playLaser(); // 정확한 빔 발사 프레임에서 사운드 발생
                 const dx = player.x - this.x, dy = player.y - this.y;
                 const rx = dx * Math.cos(-this.angle) - dy * Math.sin(-this.angle);
                 const ry = dx * Math.sin(-this.angle) + dy * Math.cos(-this.angle);

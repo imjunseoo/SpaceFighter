@@ -38,7 +38,7 @@ class SkillManager {
             t.y += t.vy; if ((t.life -= 0.05) <= 0) this.floatingTexts.splice(i, 1);
             ctx.globalAlpha = t.life; ctx.fillStyle = t.isCrit ? '#ff0' : t.color; ctx.font = `bold ${t.isCrit ? 22 : 16}px Consolas`;
             ctx.shadowBlur = 5; ctx.shadowColor = t.isCrit ? '#f00' : (t.color === '#4ade80' ? '#0f0' : '#0ff');
-            ctx.fillText(t.text, t.x, t.y); ctx.globalAlpha = 1.0;
+            ctx.fillText(t.text, t.x, t.y); ctx.shadowBlur = 0; ctx.globalAlpha = 1.0;
         });
     }
 }
@@ -48,34 +48,44 @@ class Game {
         this.canvas = document.getElementById('gameCanvas'); this.ctx = this.canvas.getContext('2d');
         this.canvas.width = CONFIG.CANVAS_WIDTH; this.canvas.height = CONFIG.CANVAS_HEIGHT;
         this.input = new InputHandler(); this.skillManager = new SkillManager();
+        this.audioManager = new AudioManager();
         this.ui = {
             layer: document.getElementById('ui-layer'), levelup: document.getElementById('levelup-ui'),
             cards: document.getElementById('cards-container'), startBtn: document.getElementById('start-btn'),
             hp: document.getElementById('hp-bar'), exp: document.getElementById('exp-bar'),
-            score: document.getElementById('score'), timer: document.getElementById('timer'), level: document.getElementById('player-level')
+            score: document.getElementById('score'), timer: document.getElementById('timer'), level: document.getElementById('player-level'),
+            acquiredSkills: document.getElementById('acquired-skills-container')
         };
         this.ui.startBtn.onclick = () => { this.ui.startBtn.blur(); this.init(); };
-        this.state = 'TITLE'; this.loop();
+        window.addEventListener('keydown', (e) => this.handleLevelUpKey(e));
+        this.state = 'TITLE'; 
+        this.lastFrameTime = performance.now();
+        this.fpsCap = 1000 / 60;
+        requestAnimationFrame((t) => this.loop(t));
     }
     init() {
         this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
         this.enemies = []; this.gems = []; this.enemyProjectiles = []; this.score = 0; this.frameCount = 0; this.gameTime = 0;
         this.updateHUD(); this.ui.layer.classList.add('hidden'); this.ui.levelup.classList.add('hidden'); this.state = 'PLAYING';
+        this.ui.acquiredSkills.innerHTML = '';
+        this.audioManager.startBGM();
     }
     spawnEnemy() {
         const { x, y } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
-        let type = 'normal', r = Math.random();
+        let type = 'normal';
+        const r = Math.random();
         if (this.gameTime > 120 && this.frameCount % 600 === 0) type = 'elite';
         else if (this.gameTime > 60 && r < 0.2) type = 'bomber';
-        else if (this.gameTime > 30 && r < 0.3) type = 'ranged';
+        else if (this.gameTime > 30 && r < 0.15) type = 'ranged';
         this.enemies.push(new Enemy(x, y, type, this.gameTime));
     }
     showLevelUpMenu() {
         this.state = 'PAUSED'; this.ui.levelup.classList.remove('hidden'); this.ui.cards.innerHTML = '';
-        [...SKILL_POOL].sort(() => 0.5 - Math.random()).slice(0, 3).forEach(skill => {
+        this.audioManager.playLevelUp();
+        [...SKILL_POOL].sort(() => 0.5 - Math.random()).slice(0, 3).forEach((skill, index) => {
             const card = document.createElement('div'); card.className = 'skill-card';
-            card.innerHTML = `${skill.mostPick ? '<div class="most-pick">👍 Most Pick!</div>' : ''}<div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name}</div><div class="skill-desc">${skill.desc}</div></div>`;
-            card.onclick = () => { this.player.applyUpgrade(skill.id); this.ui.levelup.classList.add('hidden'); this.updateHUD(); this.state = 'PLAYING'; };
+            card.innerHTML = `${skill.mostPick ? '<div class="most-pick">👍 Most Pick!</div>' : ''}<div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${skill.desc}</div></div>`;
+            card.onclick = () => { this.player.applyUpgrade(skill.id); this.addAcquiredSkillUI(skill); this.ui.levelup.classList.add('hidden'); this.ui.cards.innerHTML = ''; this.updateHUD(); this.state = 'PLAYING'; };
             this.ui.cards.appendChild(card);
         });
     }
@@ -85,8 +95,13 @@ class Game {
         this.ui.score.innerText = this.score; this.ui.level.innerText = this.player.level;
         this.ui.timer.innerText = `${String(Math.floor(this.gameTime / 60)).padStart(2, '0')}:${String(this.gameTime % 60).padStart(2, '0')}`;
     }
-    loop() {
-        requestAnimationFrame(() => this.loop());
+    loop(timestamp) {
+        requestAnimationFrame((t) => this.loop(t));
+        if (!this.lastFrameTime) this.lastFrameTime = timestamp;
+        const elapsed = timestamp - this.lastFrameTime;
+        if (elapsed < this.fpsCap) return;
+        this.lastFrameTime = timestamp - (elapsed % this.fpsCap);
+        this.playedHitThisFrame = false;
         this.ctx.fillStyle = '#050510'; this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.strokeStyle = '#112'; this.ctx.lineWidth = 1; this.ctx.beginPath();
         for (let x = 0; x <= this.canvas.width; x += 40) { this.ctx.moveTo(x, 0); this.ctx.lineTo(x, this.canvas.height); }
@@ -95,7 +110,7 @@ class Game {
         if (this.state === 'TITLE' || this.state === 'GAMEOVER') { if (this.player) this.player.draw(this.ctx, this.frameCount); return; }
         if (this.state === 'PAUSED') { this.gems.forEach(g => g.draw(this.ctx)); this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); this.enemyProjectiles.forEach(p => p.draw(this.ctx)); this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx); return; }
         this.frameCount++; if (this.frameCount % 60 === 0) { this.gameTime++; this.updateHUD(); }
-        this.player.update(this.input); if (this.input.keys.z && this.player.cooldown <= 0) { this.skillManager.triggerAttack(this.player); this.player.cooldown = this.player.maxCooldown; }
+        this.player.update(this.input); if (this.input.keys.z && this.player.cooldown <= 0) { this.skillManager.triggerAttack(this.player); this.audioManager.playSwordSlash(); this.player.cooldown = this.player.maxCooldown; }
         if (this.frameCount % Math.max(10, 40 - Math.floor(this.gameTime / 5)) === 0) this.spawnEnemy();
         this.enemyProjectiles.forEach((p, i) => { p.update(this.player, this); p.draw(this.ctx); if (p.state === 'DONE') this.enemyProjectiles.splice(i, 1); });
         this.skillManager.attacks.forEach(atk => {
@@ -118,6 +133,7 @@ class Game {
                             if (!atk.hitTargets) atk.hitTargets = new Set();
                             if (atk.hitTargets.has(e)) continue;
                             atk.hitTargets.add(e);
+                            if (!this.playedHitThisFrame) { this.audioManager.playHit(); this.playedHitThisFrame = true; }
 
                             e.hp -= atk.damage; this.skillManager.createFloatingText(e.x, e.y - 15, atk.damage, atk.isCrit);
                             e.knockbackX = Math.cos(a) * 15; e.knockbackY = Math.sin(a) * 15;
@@ -137,7 +153,7 @@ class Game {
                 }
             }
         });
-        this.gems.forEach((g, i) => { g.update(this.player); g.draw(this.ctx); if (g.isCollected) { this.gems.splice(i, 1); if (this.player.gainExp(g.expValue)) this.showLevelUpMenu(); this.updateHUD(); } });
+        this.gems.forEach((g, i) => { g.update(this.player); g.draw(this.ctx); if (g.isCollected) { this.gems.splice(i, 1); this.audioManager.playGem(); if (this.player.gainExp(g.expValue)) this.showLevelUpMenu(); this.updateHUD(); } });
         this.enemies.forEach((e, i) => {
             e.update(this.player, this); if (e.hp <= 0) { this.enemies.splice(i, 1); return; }
             e.draw(this.ctx, this.player.x, this.player.y);
@@ -149,12 +165,44 @@ class Game {
         this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx);
     }
     triggerGameOver() {
+        this.audioManager.stopBGM();
+        this.audioManager.playHit();
         this.state = 'GAMEOVER'; this.skillManager.createParticles(this.player.x, this.player.y, this.player.neonColor);
         setTimeout(() => {
             this.ui.layer.classList.remove('hidden'); document.getElementById('game-title').innerText = "SYSTEM FAILED";
             this.ui.layer.querySelector('p').innerHTML = `LV: ${this.player.level} / 생존 시간: ${this.ui.timer.innerText} / 킬수: ${this.score}`;
             this.ui.startBtn.innerText = "REBOOT SYSTEM";
         }, 1000);
+    }
+    handleLevelUpKey(e) {
+        if (this.state !== 'PAUSED') return;
+        if (['1', '2', '3'].includes(e.key)) {
+            const idx = parseInt(e.key) - 1;
+            const cards = this.ui.cards.querySelectorAll('.skill-card');
+            if (cards[idx]) cards[idx].click();
+        }
+    }
+    addAcquiredSkillUI(skill) {
+        let existing = this.ui.acquiredSkills.querySelector(`.acquired-icon[data-id="${skill.id}"]`);
+        if (existing) {
+            let countSpan = existing.querySelector('.skill-count');
+            if (!countSpan) {
+                countSpan = document.createElement('span');
+                countSpan.className = 'skill-count';
+                existing.appendChild(countSpan);
+                existing.dataset.count = 2;
+            } else {
+                existing.dataset.count = parseInt(existing.dataset.count) + 1;
+            }
+            countSpan.innerText = `x${existing.dataset.count}`;
+        } else {
+            const el = document.createElement('div');
+            el.className = 'acquired-icon';
+            el.dataset.id = skill.id;
+            el.innerHTML = skill.icon;
+            el.title = skill.name;
+            this.ui.acquiredSkills.appendChild(el);
+        }
     }
 }
 window.onload = () => { new Game(); };

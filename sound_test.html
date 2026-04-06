@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>사운드 테스트 플레이어</title>
+    <style>
+        body {
+            background-color: #050510;
+            color: #0ff;
+            font-family: 'Consolas', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            user-select: none;
+        }
+        .container {
+            background: #112;
+            padding: 30px;
+            border: 2px solid #0ff;
+            box-shadow: 0 0 20px rgba(0,255,255,0.2);
+            border-radius: 10px;
+            text-align: center;
+        }
+        h2 { margin-top: 0; color: #4ade80; }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        button {
+            background: #223;
+            color: #fff;
+            border: 1px solid #0ff;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 10px #0ff;
+        }
+        .bgm-btn {
+            grid-column: span 2;
+            background: #322;
+            border-color: #f00;
+        }
+        .bgm-btn:hover {
+            background: #f00;
+            box-shadow: 0 0 10px #f00;
+        }
+        #status { margin-top: 20px; color: #aaa; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>SYSTEM AUDIO TEST MODULE</h2>
+    <p>아래 버튼을 눌러 생성된 오디오를 스피커로 확인하세요.</p>
+    <div class="grid">
+        <button onclick="playSwordSlash()">⚔️ 검 슬래쉬 (Slash)</button>
+        <button onclick="playLaser()">🔫 레이저 발사 (Laser)</button>
+        <button onclick="playHit()">💥 피격음 (Hit)</button>
+        <button onclick="playGem()">✨ 아이템 획득 (Gem)</button>
+        <button id="bgmToggle" class="bgm-btn" onclick="toggleBGM()">🎵 조용한 BGM (On/Off)</button>
+    </div>
+    <div id="status">대기 중...</div>
+</div>
+
+<script>
+    // Web Audio API Context
+    let audioCtx;
+    let bgmOsc = null;
+    let bgmGain = null;
+    let bgmInterval = null;
+    let noteIndex = 0;
+    
+    // 활기찬 8비트 스페이스 메이저 코드 진행 (C, E, G, C(High), G, E)
+    const bgmNotes = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63];
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if(audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    function setStatus(text) {
+        document.getElementById('status').innerText = text;
+    }
+
+    // 1. 레이저 (고주파에서 저주파로 빠르게 떨어지는 톱니파)
+    function playLaser() {
+        initAudio();
+        setStatus("재생 중: 레이저 발사");
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        const now = audioCtx.currentTime;
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(110, now + 0.15); // 피치 다운
+        
+        gainNode.gain.setValueAtTime(0.1, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        
+        osc.start(now);
+        osc.stop(now + 0.15);
+    }
+
+    // 2. 검 슬래쉬 (8비트 스타일에 맞춘 짧은 사각파 스윕 다운)
+    function playSwordSlash() {
+        initAudio();
+        setStatus("재생 중: 8비트 슬래쉬");
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'square';
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        const now = audioCtx.currentTime;
+        // 아주 높은 주파수에서 0.08초만에 떨어지게하여 전형적인 마리오식 날카로운 스윙을 구현
+        osc.frequency.setValueAtTime(1200, now);
+        osc.frequency.exponentialRampToValueAtTime(100, now + 0.08);
+        
+        gainNode.gain.setValueAtTime(0.15, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+        
+        osc.start(now);
+        osc.stop(now + 0.08);
+    }
+
+    // 3. 피격음 (짧고 뭉툭한 사각파 노이즈 느낌)
+    function playHit() {
+        initAudio();
+        setStatus("재생 중: 피격음");
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'square';
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        const now = audioCtx.currentTime;
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.2, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        
+        osc.start(now);
+        osc.stop(now + 0.1);
+    }
+
+    // 4. 아이템 획득음
+    function playGem() {
+        initAudio();
+        setStatus("재생 중: 아이템 획득");
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.setValueAtTime(1200, now + 0.05); // 띠-링
+        gainNode.gain.setValueAtTime(0.1, now);
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.2);
+        osc.start(now);
+        osc.stop(now + 0.2);
+    }
+
+    // 5. 조용한 스페이스 BGM (잔잔한 사인파 아르페지오)
+    function toggleBGM() {
+        initAudio();
+        const btn = document.getElementById('bgmToggle');
+        
+        if (bgmInterval !== null) {
+            // 끄기
+            clearInterval(bgmInterval);
+            bgmInterval = null;
+            if (bgmGain) {
+                bgmGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1);
+                setTimeout(() => {
+                    if (bgmOsc) { bgmOsc.stop(); bgmOsc.disconnect(); bgmOsc = null; }
+                }, 1000);
+            }
+            btn.style.backgroundColor = '#322';
+            btn.innerText = "🎵 조용한 BGM (On/Off)";
+            setStatus("BGM 정지");
+        } else {
+            // 켜기
+            btn.style.backgroundColor = '#f00';
+            btn.innerText = "🔇 BGM 끄기";
+            setStatus("대기 중... (BGM 재생)");
+            noteIndex = 0;
+            playNextNote();
+            bgmInterval = setInterval(playNextNote, 250); // 0.25초마다 약간 빠른 템포로 재생
+        }
+    }
+
+    function playNextNote() {
+        if(!audioCtx) return;
+        const note = bgmNotes[noteIndex];
+        noteIndex = (noteIndex + 1) % bgmNotes.length;
+
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        // 너무 시끄럽지 않지만 8비트 느낌이 살짝 섞인 통통튀는 삼각파
+        osc.type = 'triangle'; 
+        osc.frequency.value = note;
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        const now = audioCtx.currentTime;
+        // 음이 짧게 끊기는 스타카토 방식 (너무 시끄럽지 않도록 볼륨 최대치를 0.03으로 억제)
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.03, now + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.005, now + 0.15);
+        
+        osc.start(now);
+        osc.stop(now + 0.2);
+    }
+</script>
+
+</body>
+</html>
