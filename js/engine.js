@@ -130,6 +130,13 @@ class Game {
         } else if (lv >= 3) {
             if (r < 0.25) type = 'ranged';
         }
+
+        // 원거리 적의 마릿수 제한 (최대 5기)
+        if (type === 'ranged') {
+            const rangedCount = this.enemies.filter(e => e.type === 'ranged').length;
+            if (rangedCount >= 5) type = 'normal';
+        }
+
         this.enemies.push(new Enemy(x, y, type, lv));
     }
     showLevelUpMenu() {

@@ -102,8 +102,8 @@ class Player {
 class Enemy {
     constructor(x, y, type, playerLevel) {
         this.x = x; this.y = y; this.type = type;
-        this.speed = (Math.random() * 1 + 1.5 + (playerLevel * 0.1));
-        this.maxHp = 10 + (playerLevel - 1) * 8;
+        this.speed = (Math.random() * 1 + 1.5 + (playerLevel * 0.05));
+        this.maxHp = 10 + (playerLevel - 1) * 5;
         this.radius = 10; this.color = '#f00'; this.knockbackResist = 1;
 
         if (type === 'ranged') {
@@ -138,7 +138,7 @@ class Enemy {
             if (dist > 250) { this.x += Math.cos(angle) * this.speed; this.y += Math.sin(angle) * this.speed; }
             else if (dist < 200) { this.x -= Math.cos(angle) * this.speed * 0.5; this.y -= Math.sin(angle) * this.speed * 0.5; }
             if (this.fireCooldown > 0) this.fireCooldown--;
-            else { game.enemyProjectiles.push(new LaserTelegraph(this.x, this.y, player.x, player.y, 60, 20)); this.fireCooldown = 150; }
+            else { game.enemyProjectiles.push(new LaserTelegraph(this.x, this.y, player.x, player.y, 60, 10, 40)); this.fireCooldown = 150; }
         } else if (this.type === 'bomber') {
             if (this.fuse > 0) {
                 if (--this.fuse <= 0) {
@@ -167,7 +167,7 @@ class Enemy {
                     const spreadAngle = angle + i * (Math.PI / 6);
                     const tx = this.x + Math.cos(spreadAngle) * 500;
                     const ty = this.y + Math.sin(spreadAngle) * 500;
-                    game.enemyProjectiles.push(new LaserTelegraph(this.x, this.y, tx, ty, 60, 25));
+                    game.enemyProjectiles.push(new LaserTelegraph(this.x, this.y, tx, ty, 60, 25, 60));
                 }
                 this.fireCooldown = 180;
             }
@@ -191,7 +191,7 @@ class Enemy {
             // 패턴 3: 지속 추적 얇은 레이저 (상시, 빠른 주기)
             if (this.trackCooldown > 0) this.trackCooldown--;
             else {
-                game.enemyProjectiles.push(new LaserTelegraph(this.x, this.y, player.x, player.y, 30, 10));
+                game.enemyProjectiles.push(new LaserTelegraph(this.x, this.y, player.x, player.y, 30, 10, 30));
                 this.trackCooldown = 60; // 1초마다
             }
 
@@ -314,9 +314,9 @@ class Gem {
 }
 
 class LaserTelegraph {
-    constructor(x, y, targetX, targetY, delay, damage) {
+    constructor(x, y, targetX, targetY, delay, damage, width = 40) {
         this.x = x; this.y = y; this.angle = Utils.angle(x, y, targetX, targetY);
-        this.width = 60; this.length = 1500; this.delay = delay; this.initialDelay = delay;
+        this.width = width; this.length = 1500; this.delay = delay; this.initialDelay = delay;
         this.activeFrames = 15; this.damage = damage; this.state = 'WARNING';
     }
     update(player, game) {
