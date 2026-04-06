@@ -99,13 +99,26 @@ class Game {
         if (this.frameCount % Math.max(10, 40 - Math.floor(this.gameTime / 5)) === 0) this.spawnEnemy();
         this.enemyProjectiles.forEach((p, i) => { p.update(this.player, this); p.draw(this.ctx); if (p.state === 'DONE') this.enemyProjectiles.splice(i, 1); });
         this.skillManager.attacks.forEach(atk => {
-            if (atk.life === atk.maxLife - 1) {
-                this.enemies.forEach((e, j) => {
+            // 공격 발생 후 초기 3프레임 동안 판정 수행 (판정 누락 방지)
+            if (atk.life >= atk.maxLife - 3) {
+                // 역순 순회를 통해 splice 시 인덱스 밀림 현상 방지
+                for (let j = this.enemies.length - 1; j >= 0; j--) {
+                    const e = this.enemies[j];
                     const d = Utils.dist(e.x, e.y, atk.x, atk.y);
                     if (d < atk.radius + e.radius) {
                         const a = Utils.angle(this.player.x, this.player.y, e.x, e.y);
                         let diff = Math.abs(atk.angle - a); if (diff > Math.PI) diff = Math.PI * 2 - diff;
                         if (diff < Math.PI / 1.5) {
+                            // 이미 이 공격에 맞은 적은 제외하고 싶다면 여기에 마킹 로직을 추가할 수 있으나, 
+                            // 현재는 단순화를 위해 매 프레임 대미지를 입히지 않도록 체크가 필요할 수 있음.
+                            // 여기서는 기존 로직의 의도를 살려 즉시 처리하되, 중복 피격을 막기 위해 
+                            // 공격 객체에 피격자 목록을 관리하거나, 단순히 역순 순회만으로도 splice 버그는 해결됨.
+                            
+                            // [수정] 한 번의 공격(atk)에 동일한 적(e)이 여러 번 맞지 않도록 체크 추가
+                            if (!atk.hitTargets) atk.hitTargets = new Set();
+                            if (atk.hitTargets.has(e)) continue;
+                            atk.hitTargets.add(e);
+
                             e.hp -= atk.damage; this.skillManager.createFloatingText(e.x, e.y - 15, atk.damage, atk.isCrit);
                             e.knockbackX = Math.cos(a) * 15; e.knockbackY = Math.sin(a) * 15;
                             if (e.hp <= 0) {
@@ -121,7 +134,7 @@ class Game {
                             } else this.skillManager.createParticles(e.x, e.y, '#fff');
                         }
                     }
-                });
+                }
             }
         });
         this.gems.forEach((g, i) => { g.update(this.player); g.draw(this.ctx); if (g.isCollected) { this.gems.splice(i, 1); if (this.player.gainExp(g.expValue)) this.showLevelUpMenu(); this.updateHUD(); } });
