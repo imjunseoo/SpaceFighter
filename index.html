@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>사이버 서바이버 (SpaceFighter)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="hud">
+            <div class="hud-top">
+                <div>
+                    <div class="hud-text">SYSTEM.HP</div>
+                    <div class="bar-container"><div id="hp-bar"></div></div>
+                </div>
+                <div class="hud-text" style="text-align: right;">
+                    KILLS: <span id="score">0</span><br>
+                    <span id="timer" style="font-size: 0.9em; color:#aaa;">00:00</span>
+                </div>
+            </div>
+        </div>
+        <div id="level-text">LV. <span id="player-level">1</span></div>
+        <div id="exp-bar-container"><div id="exp-bar"></div></div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui-layer" class="overlay">
+            <h1 id="game-title">CYBER SURVIVOR</h1>
+            <p style="color:#aaa; margin-bottom: 20px;">이동: 방향키 (Arrow Keys)<br>공격: Z 키 (전방 범위 공격)<br>회피: Spacebar (무적 대시)</p>
+            <button id="start-btn" class="start-btn">SYSTEM START</button>
+        </div>
+        <div id="levelup-ui" class="overlay hidden">
+            <h2>SYSTEM UPGRADE</h2>
+            <div class="card-container" id="cards-container"></div>
+        </div>
+    </div>
+    <!-- JavaScript Files -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/entities.js"></script>
+    <script src="js/engine.js"></script>
+</body>
+</html>
