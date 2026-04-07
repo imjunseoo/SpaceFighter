@@ -15,6 +15,9 @@ class Player {
         this.isDashing = false; this.dashTimer = 0;
         this.maxDashCooldown = CONFIG.PLAYER.MAX_DASH_COOLDOWN; this.dashCooldown = 0;
         this.vampireChance = 0; this.critChance = 0;
+        this.job = null; // 'swordmaster' or 'cyber'
+        this.combo = 0; this.comboTimer = 0;
+        this.drones = [];
     }
 
     update(input) {
@@ -41,11 +44,23 @@ class Player {
         this.y = Utils.clamp(this.y, this.radius, CONFIG.CANVAS_HEIGHT - this.radius);
         if (this.cooldown > 0) this.cooldown--;
         if (this.invincible > 0) this.invincible--;
+        
+        // 콤보 타이머 관리 (1초 내에 다음 공격 안하면 초기화)
+        if (this.comboTimer > 0) {
+            if (--this.comboTimer <= 0) this.combo = 0;
+        }
+
+        // 드론 업데이트
+        this.drones.forEach(d => d.update(this));
     }
 
     draw(ctx, frameCount) {
         if (this.invincible > 0 && Math.floor(frameCount / 4) % 2 === 0 && !this.isDashing) return;
         ctx.save(); ctx.translate(this.x, this.y);
+        
+        // 드론 먼저 그리기
+        this.drones.forEach(d => d.draw(ctx));
+
         if (this.isDashing) { ctx.scale(1.3, 0.7); ctx.globalAlpha = 0.5; }
         ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.color; ctx.fill();
@@ -95,7 +110,68 @@ class Player {
             case 'dash_cd_down': this.maxDashCooldown *= 0.7; break;
             case 'vampire': this.vampireChance += 0.15; break;
             case 'crit_rate': this.critChance += 0.2; break;
+            // 전직
+            case 'job_sword': 
+                this.job = 'swordmaster'; 
+                this.attackDamage += 10;
+                break;
+            case 'job_cyber': 
+                this.job = 'cyber'; 
+                if (this.drones.length === 0) {
+                    this.drones.push(new Drone(0));
+                    this.drones.push(new Drone(Math.PI)); // 초기 2대 (5레벨/10레벨 누적 가능)
+                } else {
+                    this.drones.push(new Drone(Math.PI / 2));
+                    this.drones.push(new Drone(Math.PI * 1.5));
+                }
+                break;
         }
+    }
+}
+
+class Drone {
+    constructor(angle) {
+        this.orbitAngle = angle;
+        this.dist = 80;
+        this.speed = 0.05;
+        this.radius = 8;
+        this.color = '#0ff';
+        this.damage = 5;
+        this.x = 0; this.y = 0;
+    }
+    update(player) {
+        this.orbitAngle += this.speed;
+        // 드론의 좌표를 플레이어의 현재 좌표 기준으로 즉시 갱신
+        this.x = player.x + Math.cos(this.orbitAngle) * this.dist;
+        this.y = player.y + Math.sin(this.orbitAngle) * this.dist;
+    }
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.orbitAngle + Math.PI / 2);
+        
+        // 드론 본체 (삼각형 SF 느낌)
+        ctx.beginPath();
+        ctx.moveTo(0, -this.radius);
+        ctx.lineTo(this.radius, this.radius);
+        ctx.lineTo(-this.radius, this.radius);
+        ctx.closePath();
+        
+        ctx.fillStyle = '#111';
+        ctx.fill();
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.color;
+        ctx.stroke();
+        
+        // 코어 발광
+        ctx.beginPath();
+        ctx.arc(0, 0, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        
+        ctx.restore();
     }
 }
 

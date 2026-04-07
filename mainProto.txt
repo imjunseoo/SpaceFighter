@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OBSIDIAN_PROTOCOL | Tactical Interface</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = {
+darkMode: "class",
+theme: {
+extend: {
+"colors": {
+"on-tertiary-container": "#ca8d00",
+"on-error-container": "#ffdad6",
+"secondary-fixed": "#c9e7f7",
+"on-secondary": "#163440",
+"surface-tint": "#00daf3",
+"surface": "#111318",
+"primary": "#00daf3",
+"on-background": "#e2e2e8",
+"surface-container-high": "#282a2e",
+"on-primary-container": "#00a7bb",
+"primary-fixed-dim": "#00daf3",
+"tertiary-fixed-dim": "#ffba38",
+"surface-container": "#1e2024",
+"error": "#ffb4ab",
+"on-primary-fixed": "#001f24",
+"on-secondary-container": "#9fbdcc",
+"surface-container-highest": "#333539",
+"secondary": "#adcbda",
+"secondary-fixed-dim": "#adcbda",
+"surface-container-lowest": "#0c0e12",
+"inverse-primary": "#006875",
+"inverse-on-surface": "#2f3035",
+"surface-bright": "#37393e",
+"surface-dim": "#111318",
+"primary-fixed": "#9cf0ff",
+"secondary-container": "#304d5a",
+"tertiary-fixed": "#ffdeac",
+"on-secondary-fixed-variant": "#2e4b57",
+"surface-container-low": "#1a1c20",
+"error-container": "#93000a",
+"on-surface-variant": "#c3c7ca",
+"on-secondary-fixed": "#001f2a",
+"primary-container": "#00363d",
+"outline": "#8d9194",
+"on-primary-fixed-variant": "#004f58",
+"surface-variant": "#333539",
+"background": "#111318",
+"on-error": "#690005",
+"tertiary": "#ffba38",
+"on-tertiary-fixed": "#281900",
+"on-primary": "#00363d",
+"outline-variant": "#43474a",
+"on-tertiary": "#432c00",
+"tertiary-container": "#432c00",
+"on-tertiary-fixed-variant": "#604100",
+"on-surface": "#e2e2e8",
+"inverse-surface": "#e2e2e8"
+},
+"borderRadius": {
+"DEFAULT": "0.125rem",
+"lg": "0.25rem",
+"xl": "0.5rem",
+"full": "0.75rem"
+},
+"fontFamily": {
+"headline": ["Space Grotesk"],
+"body": ["Manrope"],
+"label": ["Space Grotesk"]
+}
+},
+}
+}
+</script>
+<style>
+body { font-family: "Manrope", sans-serif; }
+.font-headline { font-family: "Space Grotesk", sans-serif; }
+.material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 300, "GRAD" 0, "opsz" 24; }
+.digital-grain {
+background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuDizaZBgfGSeFg0etOMze8xqlTX9-HwqBqniBague0wYLPywHcK-PWxc88sQ5htJP1cv7saP-sChxccUNFB1saXaYdsYErkqd9cuC-17o3OznStt8kAQAjUoeDrTqMJLkzfcHZ0GTomV8_p4Hu7VlQ-TZEmBj21Z7uZZ4QFHlYV7HZSMh5HaUKNoLFhE_xFN4NY2863hH9GSwhtMRqmhfZFyr2z5wDTerB55UUsMMsPlzTv7asUedSkyHeP9lcyISwGEe6qdNLsQ1Qj);
+opacity: 0.03;
+pointer-events: none;
+}
+.scan-line {
+background: linear-gradient(to bottom, transparent 50%, rgba(0, 218, 243, 0.05) 50.5%, transparent 51%);
+background-size: 100% 4px;
+pointer-events: none;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #111318; }
+::-webkit-scrollbar-thumb { background: #333539; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #00daf3; }
+</style>
+</head>
+<body class="bg-surface text-on-surface overflow-hidden min-h-screen selection:bg-primary selection:text-black">
+<!-- Digital Overlay Effects -->
+<div class="fixed inset-0 digital-grain z-[100]"></div>
+<div class="fixed inset-0 scan-line z-[90]"></div>
+<!-- Global Top Nav Bar -->
+<header class="fixed top-0 w-full z-[110] bg-[#1E2024]/90 backdrop-blur-2xl border-b border-outline-variant/10 h-16">
+<div class="max-w-[1920px] mx-auto h-full px-8 flex justify-between items-center">
+<div class="flex items-center gap-10">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-primary rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-surface font-bold text-xl">rocket_launch</span>
+</div>
+<span class="text-lg font-bold text-[#E2E2E8] tracking-widest font-headline">OBSIDIAN_PROTOCOL</span>
+</div>
+<nav class="hidden md:flex gap-8">
+<a class="font-headline text-xs tracking-[0.2em] text-primary font-bold" href="#">HOME</a>
+<a class="font-headline text-xs tracking-[0.2em] text-on-surface/60 hover:text-primary transition-colors" href="#">GAMES</a>
+<a class="font-headline text-xs tracking-[0.2em] text-on-surface/60 hover:text-primary transition-colors" href="#">SHOP</a>
+<a class="font-headline text-xs tracking-[0.2em] text-on-surface/60 hover:text-primary transition-colors" href="#">COMMUNITY</a>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-3 pr-6 border-r border-outline-variant/20">
+<div class="text-right">
+<div class="text-[#E2E2E8] font-headline font-bold text-xs tracking-tight">COMMANDER_ID</div>
+<div class="text-primary text-[9px] font-headline font-medium tracking-tighter">LVL_99_ELITE</div>
+</div>
+<div class="w-8 h-8 bg-surface-container-highest rounded border border-primary/20 p-0.5">
+<img alt="Commander Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvjY5cIvNxi2OHUGmvFhSuLTVD1LR3EwNnfefwSh0NhbPMOy5QI1tYt_OTKHg5pCcJnoJiSjcTfKOqZlvDfNbKhvuKowTek00o8fkv9gw7pB9qVe5tR3CNNH0H1xcXdUye0xaaaPe0Zxc56qRi00cS5APfp1nf1XWvNbbcUUiexbHGDe3dICBEExxWSwMhpE59nHcTj7dAmWDxqGTn5kHp0-cyy4fqCpMC9CCDL2HiK_Zx8Jxj-1VC-iR19VMmkSWnTJFTzZ7C3JfQ"/>
+</div>
+</div>
+<div class="flex gap-4">
+<button class="material-symbols-outlined text-[#ADCBDA] hover:text-[#00DAF3] transition-colors" title="Notifications">notifications</button>
+<button class="material-symbols-outlined text-[#ADCBDA] hover:text-[#00DAF3] transition-colors" title="Settings">settings</button>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Responsive Layout Container -->
+<div class="pt-16 max-w-[1920px] mx-auto h-screen flex relative">
+<!-- Side Navigation (Game Specific) -->
+<aside class="w-64 border-r border-outline-variant/10 bg-[#0C0E12]/50 backdrop-blur-md hidden lg:flex flex-col sticky top-16 h-[calc(100vh-64px)] shrink-0">
+<div class="p-6">
+<div class="flex flex-col gap-1">
+<span class="text-[10px] font-headline uppercase tracking-widest text-primary/60">CURRENT_OP</span>
+<span class="text-[12px] font-headline text-primary font-bold">STATION_7_DEPLOYMENT</span>
+</div>
+</div>
+<nav class="flex flex-col">
+<a class="flex items-center bg-primary/10 border-r-2 border-primary text-primary px-6 py-4 font-headline text-xs tracking-tighter" href="#">
+<span class="material-symbols-outlined mr-3 text-sm" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+<span>MISSION_START</span>
+</a>
+<a class="flex items-center text-on-surface/60 hover:bg-surface-container-high hover:text-on-surface px-6 py-4 font-headline text-xs tracking-tighter transition-all" href="#">
+<span class="material-symbols-outlined mr-3 text-sm">military_tech</span>
+<span>ACHIEVEMENTS</span>
+</a>
+<a class="flex items-center text-on-surface/60 hover:bg-surface-container-high hover:text-on-surface px-6 py-4 font-headline text-xs tracking-tighter transition-all" href="#">
+<span class="material-symbols-outlined mr-3 text-sm">shield</span>
+<span>ARMORY</span>
+</a>
+<a class="flex items-center text-on-surface/60 hover:bg-surface-container-high hover:text-on-surface px-6 py-4 font-headline text-xs tracking-tighter transition-all" href="#">
+<span class="material-symbols-outlined mr-3 text-sm">analytics</span>
+<span>RECORDS</span>
+</a>
+</nav>
+<div class="mt-auto p-6 space-y-6">
+<div class="space-y-2">
+<div class="flex justify-between text-[8px] font-headline text-outline tracking-widest">
+<span>CORE_STABILITY</span>
+<span>94%</span>
+</div>
+<div class="h-1 bg-surface-container-lowest rounded-full overflow-hidden">
+<div class="h-full w-[94%] bg-primary"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-[8px] font-headline text-outline tracking-widest">
+<span>ENERGY_GRID</span>
+<span>12%</span>
+</div>
+<div class="h-1 bg-surface-container-lowest rounded-full overflow-hidden">
+<div class="h-full w-[12%] bg-tertiary shadow-[0_0_8px_rgba(255,186,56,0.4)]"></div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Page Content -->
+<main class="flex-1 relative overflow-hidden">
+<!-- Hero Viewport -->
+<div class="relative w-full h-full">
+<img alt="Orbital Station Interior" class="w-full h-full object-cover opacity-60" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAH5eJBe--yseDNRV5mY3zSkBOEud5xNBbEm13RHmPonDKHGztu0fnVzqeDDMTFv46-izC9hvkv98otCVLvQ7ZgYvVapkWAYtS72ZUcG4ECIZuxZkIQm-KrZGWLJ9LohoWc-gqxJQ4CXYzHaFbeuD5CsIsxed77uKv31caW702ZVthy_bMI2bxOPYPqwWi9s1IwrwWgmqOtbN3VsHRHSD0PDphWP9pumpSgBgkPDOCbxLWbRDDi0oivMLmFnxGB_2xQLfPX3Cu2a5bi"/>
+<!-- Background gradient overlays for depth -->
+<div class="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent"></div>
+<div class="absolute inset-0 bg-gradient-to-r from-surface/20 via-transparent to-surface/20"></div>
+<!-- Empty Container for Custom Assets -->
+<div class="absolute inset-0 z-10">
+<!-- Developer assets injected here -->
+</div>
+</div>
+</main>
+</div>
+<!-- Background UI Viewport Ornaments -->
+<div class="fixed top-20 left-8 w-12 h-12 border-t-2 border-l-2 border-outline/10 pointer-events-none z-50"></div>
+<div class="fixed top-20 right-8 w-12 h-12 border-t-2 border-r-2 border-outline/10 pointer-events-none z-50"></div>
+<div class="fixed bottom-8 left-8 w-12 h-12 border-b-2 border-l-2 border-outline/10 pointer-events-none z-50"></div>
+<div class="fixed bottom-8 right-8 w-12 h-12 border-b-2 border-r-2 border-outline/10 pointer-events-none z-50"></div>
+</body></html>

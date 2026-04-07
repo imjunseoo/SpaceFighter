@@ -27,3 +27,8 @@ const SKILL_POOL = [
     { id: 'vampire', name: '흡혈 회로', desc: '적 처치 시 15% 확률로 <span class="highlight">HP 5 회복</span>', icon: '🩸', mostPick: false },
     { id: 'crit_rate', name: '약점 포착', desc: '공격 시 20% 확률로 <span class="highlight">2배 피해</span>', icon: '🎯', mostPick: true }
 ];
+
+const JOB_POOL = [
+    { id: 'job_sword', name: '네온 소드마스터', desc: '공격이 <span class="highlight">3단계 콤보</span>로 변화합니다. 3타는 주변 360도를 타격합니다.', icon: '⚔️', type: 'JOB' },
+    { id: 'job_cyber', name: '사이버 오버로드', desc: '주변을 공전하며 대미지를 입히는 <span class="highlight">추적 드론</span>을 가동합니다.', icon: '🛰️', type: 'JOB' }
+];

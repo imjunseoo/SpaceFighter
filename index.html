@@ -1,67 +1,242 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html class="dark" lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>사이버 서바이버 (SpaceFighter)</title>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+    <title>사이버 서바이버 (SpaceFighter) | Tactical Interface</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-container": "#ca8d00",
+                        "on-error-container": "#ffdad6",
+                        "secondary-fixed": "#c9e7f7",
+                        "on-secondary": "#163440",
+                        "surface-tint": "#00daf3",
+                        "surface": "#111318",
+                        "primary": "#00daf3",
+                        "on-background": "#e2e2e8",
+                        "surface-container-high": "#282a2e",
+                        "on-primary-container": "#00a7bb",
+                        "primary-fixed-dim": "#00daf3",
+                        "tertiary-fixed-dim": "#ffba38",
+                        "surface-container": "#1e2024",
+                        "error": "#ffb4ab",
+                        "on-primary-fixed": "#001f24",
+                        "on-secondary-container": "#9fbdcc",
+                        "surface-container-highest": "#333539",
+                        "secondary": "#adcbda",
+                        "secondary-fixed-dim": "#adcbda",
+                        "surface-container-lowest": "#0c0e12",
+                        "inverse-primary": "#006875",
+                        "inverse-on-surface": "#2f3035",
+                        "surface-bright": "#37393e",
+                        "surface-dim": "#111318",
+                        "primary-fixed": "#9cf0ff",
+                        "secondary-container": "#304d5a",
+                        "tertiary-fixed": "#ffdeac",
+                        "on-secondary-fixed-variant": "#2e4b57",
+                        "surface-container-low": "#1a1c20",
+                        "error-container": "#93000a",
+                        "on-surface-variant": "#c3c7ca",
+                        "on-secondary-fixed": "#001f2a",
+                        "primary-container": "#00363d",
+                        "outline": "#8d9194",
+                        "on-primary-fixed-variant": "#004f58",
+                        "surface-variant": "#333539",
+                        "background": "#111318",
+                        "on-error": "#690005",
+                        "tertiary": "#ffba38",
+                        "on-tertiary-fixed": "#281900",
+                        "on-primary": "#00363d",
+                        "outline-variant": "#43474a",
+                        "on-tertiary": "#432c00",
+                        "tertiary-container": "#432c00",
+                        "on-tertiary-fixed-variant": "#604100",
+                        "on-surface": "#e2e2e8",
+                        "inverse-surface": "#e2e2e8"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Manrope"],
+                        "label": ["Space Grotesk"]
+                    }
+                },
+            }
+        }
+    </script>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        body { font-family: "Manrope", sans-serif; }
+        .font-headline { font-family: "Space Grotesk", sans-serif; }
+        .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 300, "GRAD" 0, "opsz" 24; }
+        /* 외부 이미지 제거 및 CSS 노이즈 대체 */
+        .digital-grain {
+            background-image: none;
+            background: radial-gradient(circle, transparent 20%, #111 20%, #111 80%, transparent 80%, transparent) 0 0,
+                        radial-gradient(circle, transparent 20%, #111 20%, #111 80%, transparent 80%, transparent) 2px 2px;
+            background-size: 4px 4px;
+            opacity: 0.05;
+            pointer-events: none;
+        }
+        .scan-line {
+            background: linear-gradient(to bottom, transparent 50%, rgba(0, 218, 243, 0.05) 50.5%, transparent 51%);
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+    </style>
 </head>
-<body>
-    <div id="game-container">
-        <div id="hud">
-            <div class="hud-top">
-                <div>
-                    <div class="hud-text">SYSTEM.HP</div>
-                    <div class="bar-container"><div id="hp-bar"></div></div>
-                </div>
-                <div class="hud-text" style="text-align: right;">
-                    KILLS: <span id="score">0</span><br>
-                    <span id="timer" style="font-size: 0.9em; color:#aaa;">00:00</span>
-                </div>
-            </div>
-        </div>
-        <div id="level-text">LV. <span id="player-level">1</span></div>
-        <div id="exp-bar-container"><div id="exp-bar"></div></div>
-        <canvas id="gameCanvas"></canvas>
-        <div id="ui-layer" class="overlay">
-            <h1 id="game-title">CYBER SURVIVOR</h1>
-            <p style="color:#aaa; margin-bottom: 20px;">이동: 방향키 (Arrow Keys)<br>공격: Z 키 (전방 범위 공격)<br>회피: Spacebar (무적 대시)</p>
-            <button id="start-btn" class="start-btn">SYSTEM START</button>
-        </div>
-        <div id="acquired-skills-container" class="acquired-skills"></div>
-        <div id="levelup-ui" class="overlay hidden">
-            <h2>SYSTEM UPGRADE</h2>
-            <div class="card-container" id="cards-container"></div>
-        </div>
-        <div id="pause-menu" class="overlay hidden">
-            <div class="pause-layout">
-                <div class="pause-left-panel">
-                    <div class="pause-box player-info-box">
-                        <div class="box-title">Player Info</div>
-                        <div id="pause-stats" class="pause-stats"></div>
+<body class="bg-surface text-on-surface overflow-hidden min-h-screen selection:bg-primary selection:text-black">
+    <!-- Digital Overlay Effects -->
+    <div class="fixed inset-0 digital-grain z-[100] pointer-events-none"></div>
+    <div class="fixed inset-0 scan-line z-[90] pointer-events-none"></div>
+
+    <!-- Main UI Overlay (Lobby) -->
+    <div id="main-ui-overlay" class="fixed inset-0 z-[110] flex flex-col">
+        <!-- Global Top Nav Bar -->
+        <header class="w-full bg-[#1E2024]/90 backdrop-blur-2xl border-b border-outline-variant/10 h-16 shrink-0">
+            <div class="max-w-[1920px] mx-auto h-full px-8 flex justify-between items-center">
+                <div class="flex items-center gap-10">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 bg-primary rounded flex items-center justify-center">
+                            <span class="material-symbols-outlined text-surface font-bold text-xl">rocket_launch</span>
+                        </div>
+                        <span class="text-lg font-bold text-[#E2E2E8] tracking-widest font-headline">SPACE_FIGHTER</span>
                     </div>
-                    <button id="resume-btn" class="pause-btn">Continue</button>
-                    <button id="restart-btn" class="pause-btn">Restart</button>
                 </div>
-                <div class="pause-right-panel">
-                    <div class="pause-box inventory-box">
-                        <div class="box-title">Player Ability<br>Inventory</div>
-                        <div id="pause-skills" class="pause-skills"></div>
+                <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-3 pr-6 border-r border-outline-variant/20">
+                        <div class="text-right">
+                            <div class="text-[#E2E2E8] font-headline font-bold text-xs tracking-tight">PLAYER_ID</div>
+                            <div class="text-primary text-[9px] font-headline font-medium tracking-tighter">ELITE_PILOT</div>
+                        </div>
+                        <div class="w-8 h-8 bg-surface-container-highest rounded border border-primary/20 p-0.5 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-primary text-lg">person</span>
+                        </div>
                     </div>
                 </div>
             </div>
+        </header>
+
+        <!-- Main Layout Container -->
+        <div class="flex-1 flex relative overflow-hidden">
+            <!-- Side Navigation -->
+            <aside class="w-64 border-r border-outline-variant/10 bg-[#0C0E12]/50 backdrop-blur-md flex flex-col h-full shrink-0">
+                <div class="p-6">
+                    <div class="flex flex-col gap-1">
+                        <span class="text-[10px] font-headline uppercase tracking-widest text-primary/60">CURRENT_STATUS</span>
+                        <span class="text-[12px] font-headline text-primary font-bold">READY_TO_DEPLOY</span>
+                    </div>
+                </div>
+                <nav class="flex flex-col">
+                    <button id="btn-mission-start" class="flex items-center bg-primary/10 border-r-2 border-primary text-primary px-6 py-4 font-headline text-xs tracking-widest hover:bg-primary/20 transition-all text-left">
+                        <span class="material-symbols-outlined mr-3 text-sm" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+                        <span>MISSION_START</span>
+                    </button>
+                    <a class="flex items-center text-on-surface/60 hover:bg-surface-container-high hover:text-on-surface px-6 py-4 font-headline text-xs tracking-widest transition-all" href="#">
+                        <span class="material-symbols-outlined mr-3 text-sm">military_tech</span>
+                        <span>ACHIEVEMENTS</span>
+                    </a>
+                </nav>
+                <div class="mt-auto p-6 space-y-6">
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-[8px] font-headline text-outline tracking-widest">
+                            <span>SYSTEM_STABILITY</span>
+                            <span>100%</span>
+                        </div>
+                        <div class="h-1 bg-surface-container-lowest rounded-full overflow-hidden">
+                            <div class="h-full w-full bg-primary"></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Page Content (Lobby Background) -->
+            <main class="flex-1 relative overflow-hidden bg-[#0a0a1a]">
+                <div class="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+                    <span class="material-symbols-outlined text-[300px] text-primary">rocket_launch</span>
+                </div>
+                <div class="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent"></div>
+                <div class="absolute inset-0 flex flex-col items-center justify-center p-12 text-center">
+                    <h1 class="text-6xl font-headline font-bold text-primary mb-4 tracking-tighter">CYBER SURVIVOR</h1>
+                    <p class="text-on-surface/60 max-w-md font-body leading-relaxed">이동: 방향키 (Arrow Keys)<br>공격: Z 키 (전방 범위 공격)<br>회피: Spacebar (무적 대시)</p>
+                </div>
+            </main>
         </div>
-        <div id="dev-tools" class="dev-tools hidden">
-            <div class="dev-tools-header">⚙ DEV TOOLS</div>
-            <div class="dev-tools-body">
-                <button id="dev-lvup" class="dev-btn">Level UP</button>
-                <button id="dev-lvup5" class="dev-btn">Level +5</button>
-                <button id="dev-hp" class="dev-btn">HP Full</button>
-                <button id="dev-kill-all" class="dev-btn">Kill All</button>
-                <div class="dev-info" id="dev-info"></div>
+    </div>
+
+    <!-- Game HUD Layer (Initially Hidden) -->
+    <div id="game-ui-layer" class="fixed inset-0 z-[120] pointer-events-none hidden">
+        <div id="hud" class="absolute top-4 left-4 right-4 flex justify-between items-start">
+            <div>
+                <div class="text-primary font-headline font-bold text-sm tracking-widest mb-1">SYSTEM.HP</div>
+                <div class="w-64 h-3 bg-surface-container-lowest border border-primary/30">
+                    <div id="hp-bar" class="h-full bg-primary shadow-[0_0_10px_#00daf3] transition-all duration-200"></div>
+                </div>
+            </div>
+            <div class="text-right">
+                <div class="text-primary font-headline font-bold text-lg">KILLS: <span id="score">0</span></div>
+                <div id="timer" class="text-on-surface/60 font-headline text-sm">00:00</div>
+            </div>
+        </div>
+        
+        <div id="level-text" class="absolute bottom-6 right-6 text-tertiary font-headline font-bold text-2xl">LV. <span id="player-level">1</span></div>
+        <div id="exp-bar-container" class="absolute bottom-0 left-0 w-full h-2 bg-surface-container-lowest">
+            <div id="exp-bar" class="h-full bg-tertiary shadow-[0_0_10px_#ffba38] transition-all duration-200" style="width: 0%"></div>
+        </div>
+        
+        <div id="acquired-skills-container" class="absolute bottom-12 right-6 flex gap-2"></div>
+    </div>
+
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas" class="hidden fixed inset-0 w-full h-full object-contain z-[80] bg-[#050510]"></canvas>
+
+    <!-- Overlay UI Elements (Shared) -->
+    <div id="levelup-ui" class="fixed inset-0 z-[200] bg-surface/90 backdrop-blur-md flex flex-col items-center justify-center hidden">
+        <h2 class="text-4xl font-headline font-bold text-primary mb-8 tracking-widest">SYSTEM UPGRADE</h2>
+        <div id="cards-container" class="flex flex-col gap-4 w-full max-w-md px-4"></div>
+    </div>
+
+    <div id="pause-menu" class="fixed inset-0 z-[200] bg-surface/95 backdrop-blur-xl flex items-center justify-center hidden">
+        <div class="max-w-4xl w-full mx-4 flex flex-col md:flex-row gap-8">
+            <div class="flex-1 bg-surface-container border border-outline-variant/20 p-8 rounded-lg">
+                <h3 class="text-2xl font-headline font-bold text-primary mb-6">Player Info</h3>
+                <div id="pause-stats" class="space-y-4 text-on-surface/80 font-body"></div>
+                <div class="mt-8 flex flex-col gap-4">
+                    <button id="resume-btn" class="w-full py-3 bg-primary text-surface font-headline font-bold tracking-widest hover:bg-white transition-colors">CONTINUE</button>
+                    <button id="restart-btn" class="w-full py-3 border border-outline text-on-surface font-headline font-bold tracking-widest hover:bg-surface-variant transition-colors">MAIN MENU</button>
+                </div>
+            </div>
+            <div class="flex-1 bg-surface-container border border-outline-variant/20 p-8 rounded-lg flex flex-col">
+                <h3 class="text-2xl font-headline font-bold text-primary mb-6">Abilities</h3>
+                <div id="pause-skills" class="flex flex-wrap gap-4 overflow-y-auto"></div>
             </div>
         </div>
     </div>
+
+    <!-- Dev Tools -->
+    <div id="dev-tools" class="fixed top-20 left-4 z-[250] bg-surface-container-highest border border-error p-4 hidden">
+        <div class="text-error font-headline font-bold text-xs mb-3 tracking-widest border-b border-error/30 pb-1">⚙ DEV TOOLS</div>
+        <div class="flex flex-col gap-2">
+            <button id="dev-lvup" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">Level UP</button>
+            <button id="dev-lvup5" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">Level +5</button>
+            <button id="dev-hp" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">HP Full</button>
+            <button id="dev-kill-all" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">Kill All</button>
+            <div id="dev-info" class="text-[9px] text-on-surface/40 font-mono mt-2 leading-tight"></div>
+        </div>
+    </div>
+
     <!-- JavaScript Files -->
     <script src="js/audio.js"></script>
     <script src="js/config.js"></script>
