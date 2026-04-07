@@ -11,7 +11,7 @@ const CONFIG = {
         ATTACK_DAMAGE: 10,
         ATTACK_RANGE: 120,
         MAX_COOLDOWN: 25,
-        PICKUP_RANGE: 60,
+        PICKUP_RANGE: 80,
         MAX_DASH_COOLDOWN: 90
     }
 };

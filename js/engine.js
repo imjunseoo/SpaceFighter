@@ -25,14 +25,14 @@ class SkillManager {
             
             if (player.combo === 2) {
                 radius *= 2.0;
-                damage *= 1.5;
+                damage *= 1.4; // 1.5 -> 1.4 하향
                 isLinear = true;
             } else if (player.combo === 3) {
-                radius *= 2.5; // 유저 요청: 더 넓은 360도
-                damage *= 2.5;
+                radius *= 2.5; 
+                damage *= 2.2; // 2.5 -> 2.2 하향
                 isFullCircle = true;
             } else {
-                damage *= 1.2;
+                damage *= 1.1; // 1.2 -> 1.1 하향
             }
         }
 
@@ -243,7 +243,7 @@ class Game {
     }
     init() {
         this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
-        this.enemies = []; this.gems = []; this.enemyProjectiles = []; this.score = 0; this.frameCount = 0; this.gameTime = 0;
+        this.enemies = []; this.gems = []; this.items = []; this.enemyProjectiles = []; this.score = 0; this.frameCount = 0; this.gameTime = 0;
         this.bossSpawned = false; this.bossDefeated = false; this.bossWarning = false;
         this.shockwave = null;
         this.updateHUD(); 
@@ -376,7 +376,7 @@ class Game {
                 if (closest) {
                     d.target = closest;
                     closest.hp -= droneDmg;
-                    this.skillManager.createFloatingText(closest.x, closest.y - 10, droneDmg, false, '#0ff');
+                    this.skillManager.createFloatingText(closest.x, closest.y - 10, Math.round(droneDmg), false, '#0ff');
                 } else { d.target = null; }
             });
         }
@@ -437,10 +437,11 @@ class Game {
                         if (isHit) {
                             if (atk.hitTargets.has(e)) continue;
                             atk.hitTargets.add(e); if (!this.playedHitThisFrame) { this.audioManager.playHit(); this.playedHitThisFrame = true; }
-                            e.hp -= atk.damage; this.skillManager.createFloatingText(e.x, e.y - 15, atk.damage, atk.isCrit);
+                            e.hp -= atk.damage; this.skillManager.createFloatingText(e.x, e.y - 15, Math.round(atk.damage), atk.isCrit);
                             e.knockbackX = Math.cos(a) * (atk.isFullCircle ? 25 : 15); e.knockbackY = Math.sin(a) * (atk.isFullCircle ? 25 : 15);
                             if (e.hp <= 0) {
                                 this.skillManager.createParticles(e.x, e.y, e.color);
+                                if (e.type === 'elite') this.items.push(new Magnet(e.x, e.y));
                                 let gv = (e.type === 'ranged') ? 3 : (e.type === 'bomber' ? 5 : (e.type === 'elite' ? 10 : 1));
                                 if (e.type === 'elite') for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gv));
                                 else if (e.type === 'boss') {
@@ -470,6 +471,20 @@ class Game {
                 }
             }
         });
+        
+        // 아이템 처리 (자석 등)
+        this.items.forEach((item, i) => {
+            item.update(this.player);
+            item.draw(this.ctx);
+            if (item.isCollected) {
+                this.items.splice(i, 1);
+                if (item instanceof Magnet) {
+                    this.showToast('MAGNET ACTIVATED', '🧲');
+                    this.gems.forEach(g => g.isAttracted = true);
+                }
+            }
+        });
+
         this.gems.forEach((g, i) => { g.update(this.player); g.draw(this.ctx); if (g.isCollected) { this.gems.splice(i, 1); this.audioManager.playGem(); if (this.player.gainExp(g.expValue)) this.showLevelUpMenu(); this.updateHUD(); } });
         this.enemies.forEach((e, i) => {
             e.update(this.player, this); if (e.hp <= 0) { this.enemies.splice(i, 1); return; }
@@ -502,27 +517,44 @@ class Game {
         // Pause 메뉴 스킬 리스트 심플하게 재구성
         const skillsContainer = document.getElementById('pause-skills');
         skillsContainer.innerHTML = '';
-        skillsContainer.className = "flex flex-col gap-2 overflow-y-auto"; // flex-row -> flex-col 형태로 리스트화
+        // 스크롤바 없이 획득 순서대로 나란히 배치 (Flex Wrap)
+        skillsContainer.className = "flex flex-wrap gap-4 overflow-visible w-full"; 
+        
         Array.from(this.ui.acquiredSkills.children).forEach(iconEl => {
             const count = iconEl.dataset.count || 1;
             const name = iconEl.dataset.name || 'Unknown Ability';
-            const iconHTML = iconEl.innerHTML.split('<span')[0]; // count span 제거하고 순수 아이콘만 추출
+            const tooltipText = iconEl.dataset.tooltip ? iconEl.dataset.tooltip.replace(/<[^>]+>/g, '') : '';
+            const iconHTML = iconEl.innerHTML.split('<span')[0]; 
             
-            const row = document.createElement('div');
-            row.className = "flex items-center gap-4 bg-surface-container-highest p-2 rounded border border-outline-variant/30";
-            row.innerHTML = `
-                <div class="text-3xl">${iconHTML}</div>
-                <div class="flex-1 font-headline font-bold text-lg text-primary">${name}</div>
-                <div class="text-on-surface/60 font-body font-bold text-lg">Lv.${count}</div>
+            const item = document.createElement('div');
+            // 호버 시 스케일 업 및 커스텀 박스 툴팁 제공
+            item.className = "group relative flex items-center justify-center bg-surface-container-highest p-4 rounded-xl border border-outline-variant/30 hover:bg-primary hover:scale-110 transition-all duration-300 cursor-help shadow-lg";
+            
+            item.innerHTML = `
+                <div class="text-4xl group-hover:text-surface transition-colors">${iconHTML}</div>
+                <div class="absolute -top-2 -right-2 bg-tertiary text-on-tertiary font-headline font-bold text-[10px] px-2 py-1 rounded-full shadow-md group-hover:bg-white group-hover:text-primary transition-colors">
+                    LV.${count}
+                </div>
+                <!-- 커스텀 박스 툴팁 UI (아이콘 위쪽 배치 - 표시 속성 안정화) -->
+                <div class="absolute bottom-[calc(100%+15px)] left-1/2 -translate-x-1/2 min-w-[200px] w-max max-w-[250px] p-3 bg-surface-container-high border border-primary/50 rounded-lg shadow-[0_5px_20px_rgba(0,0,0,0.8)] z-[999] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none">
+                    <div class="flex items-center gap-2 mb-2 border-b border-outline-variant/30 pb-2">
+                        <span class="text-2xl">${iconHTML}</span>
+                        <div class="text-primary font-headline font-bold text-sm tracking-widest uppercase">${name}</div>
+                    </div>
+                    <div class="text-on-surface/80 font-body text-[12px] leading-relaxed break-normal whitespace-normal">
+                        ${tooltipText || 'No description available.'}
+                    </div>
+                    <!-- 하단 중앙 화살표 -->
+                    <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-surface-container-high border-r border-b border-primary/50 rotate-45"></div>
+                </div>
             `;
-            // 툴팁 유지
-            row.dataset.tooltip = iconEl.dataset.tooltip;
-            // 툴팁 스타일 호환을 위해 클래스 추가
-            row.classList.add('acquired-icon'); 
-            skillsContainer.appendChild(row);
+            
+            item.classList.add('acquired-icon'); 
+            skillsContainer.appendChild(item);
         });
+        
         if (skillsContainer.children.length === 0) {
-            skillsContainer.innerHTML = '<div class="text-on-surface/40 font-body">No Abilities Acquired</div>';
+            skillsContainer.innerHTML = '<div class="w-full text-on-surface/40 font-body text-center py-10">No Abilities Acquired</div>';
         }
     }
     addAcquiredSkillUI(skill) {

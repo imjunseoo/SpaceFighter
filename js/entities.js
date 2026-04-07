@@ -44,7 +44,7 @@ class Player {
         this.y = Utils.clamp(this.y, this.radius, CONFIG.CANVAS_HEIGHT - this.radius);
         if (this.cooldown > 0) this.cooldown--;
         if (this.invincible > 0) this.invincible--;
-        
+
         // 콤보 타이머 관리 (1초 내에 다음 공격 안하면 초기화)
         if (this.comboTimer > 0) {
             if (--this.comboTimer <= 0) this.combo = 0;
@@ -56,7 +56,7 @@ class Player {
 
     draw(ctx, frameCount) {
         if (this.invincible > 0 && Math.floor(frameCount / 4) % 2 === 0 && !this.isDashing) return;
-        
+
         // 드론은 절대 좌표를 사용하므로 플레이어 translate 전에 그림 (더블 트랜스폼 방지)
         this.drones.forEach(d => d.draw(ctx));
 
@@ -93,7 +93,7 @@ class Player {
     gainExp(amount) {
         this.exp += amount;
         if (this.exp >= this.maxExp) {
-            this.exp -= this.maxExp; this.maxExp = Math.floor(this.maxExp * 1.5); this.level++;
+            this.exp -= this.maxExp; this.maxExp = Math.floor(this.maxExp * 1.3); this.level++;
             return true;
         }
         return false;
@@ -111,12 +111,12 @@ class Player {
             case 'vampire': this.vampireChance += 0.15; break;
             case 'crit_rate': this.critChance += 0.2; break;
             // 전직
-            case 'job_sword': 
-                this.job = 'swordmaster'; 
+            case 'job_sword':
+                this.job = 'swordmaster';
                 this.attackDamage += 10;
                 break;
-            case 'job_cyber': 
-                this.job = 'cyber'; 
+            case 'job_cyber':
+                this.job = 'cyber';
                 if (this.drones.length === 0) {
                     this.drones.push(new Drone(0));
                     this.drones.push(new Drone(Math.PI)); // 초기 2대 (5레벨/10레벨 누적 가능)
@@ -149,7 +149,7 @@ class Drone {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.orbitAngle + Math.PI / 2);
-        
+
         // 드론 본체 (마름모/다이아몬드 형태)
         ctx.beginPath();
         ctx.moveTo(0, -this.radius * 1.5);
@@ -157,7 +157,7 @@ class Drone {
         ctx.lineTo(0, this.radius * 1.5);
         ctx.lineTo(-this.radius, 0);
         ctx.closePath();
-        
+
         ctx.fillStyle = '#111';
         ctx.fill();
         ctx.strokeStyle = this.color;
@@ -165,13 +165,13 @@ class Drone {
         ctx.shadowBlur = 15;
         ctx.shadowColor = this.color;
         ctx.stroke();
-        
+
         // 코어 발광 (흰색 소형 원)
         ctx.beginPath();
         ctx.arc(0, 0, 3, 0, Math.PI * 2);
         ctx.fillStyle = '#fff';
         ctx.fill();
-        
+
         ctx.restore();
     }
 }
@@ -342,7 +342,7 @@ class Enemy {
             ctx.fillStyle = '#111'; ctx.fillRect(-barW / 2, -this.radius - 30, barW, barH);
             ctx.fillStyle = '#fbbf24'; ctx.fillRect(-barW / 2, -this.radius - 30, barW * (this.hp / this.maxHp), barH);
             ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(-barW / 2, -this.radius - 30, barW, barH);
-            
+
             ctx.restore();
             return; // 보스는 여기서 드로잉 종료
         }
@@ -355,8 +355,8 @@ class Enemy {
         }
         ctx.closePath();
         ctx.fillStyle = this.hp < this.maxHp ? '#fff' : (this.type === 'bomber' && this.fuse > 0 ? '#f00' : '#111');
-        ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.shadowBlur = 10; ctx.shadowColor = color; ctx.stroke(); 
-        
+        ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.shadowBlur = 10; ctx.shadowColor = color; ctx.stroke();
+
         ctx.shadowBlur = 0;
         if (this.type === 'bomber' && this.fuse > 0) {
             ctx.strokeStyle = `rgba(255, 0, 0, ${0.1 + (60 - this.fuse) / 60 * 0.4})`;
@@ -387,6 +387,25 @@ class Gem {
         ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(Date.now() / 200);
         ctx.beginPath(); ctx.rect(-this.size / 2, -this.size / 2, this.size, this.size);
         ctx.fillStyle = this.color; ctx.shadowBlur = 10; ctx.shadowColor = this.color; ctx.fill(); ctx.restore();
+    }
+}
+
+class Magnet {
+    constructor(x, y) {
+        this.x = x; this.y = y; this.radius = 12; this.color = '#fff'; this.isCollected = false;
+    }
+    update(player) {
+        if (Utils.dist(this.x, this.y, player.x, player.y) < player.radius + this.radius) this.isCollected = true;
+    }
+    draw(ctx) {
+        ctx.save(); ctx.translate(this.x, this.y);
+        ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#111'; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = this.color; ctx.shadowBlur = 15; ctx.shadowColor = this.color; ctx.stroke();
+        // 자석 말발굽 형태 간단히 표시
+        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI, true);
+        ctx.lineWidth = 4; ctx.stroke();
+        ctx.restore();
     }
 }
 
