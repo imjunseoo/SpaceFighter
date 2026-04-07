@@ -155,3 +155,12 @@ button.start-btn:hover { background-color: #fff; color: #000; }
 }
 .dev-btn:hover { background: #f0f; color: #000; }
 .dev-info { color: #aaa; font-size: 0.75rem; margin-top: 4px; line-height: 1.5; }
+
+/* Boss Warning Flash */
+@keyframes warningFlash {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+}
+.boss-warning-flash {
+    animation: warningFlash 0.5s ease-in-out infinite;
+}

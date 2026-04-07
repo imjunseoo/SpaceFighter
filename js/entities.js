@@ -56,11 +56,11 @@ class Player {
 
     draw(ctx, frameCount) {
         if (this.invincible > 0 && Math.floor(frameCount / 4) % 2 === 0 && !this.isDashing) return;
-        ctx.save(); ctx.translate(this.x, this.y);
         
-        // 드론 먼저 그리기
+        // 드론은 절대 좌표를 사용하므로 플레이어 translate 전에 그림 (더블 트랜스폼 방지)
         this.drones.forEach(d => d.draw(ctx));
 
+        ctx.save(); ctx.translate(this.x, this.y);
         if (this.isDashing) { ctx.scale(1.3, 0.7); ctx.globalAlpha = 0.5; }
         ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.color; ctx.fill();
@@ -135,7 +135,7 @@ class Drone {
         this.dist = 80;
         this.speed = 0.05;
         this.radius = 8;
-        this.color = '#0ff';
+        this.color = '#f7d774'; // 아이보리 골드
         this.damage = 5;
         this.x = 0; this.y = 0;
     }
@@ -150,24 +150,25 @@ class Drone {
         ctx.translate(this.x, this.y);
         ctx.rotate(this.orbitAngle + Math.PI / 2);
         
-        // 드론 본체 (삼각형 SF 느낌)
+        // 드론 본체 (마름모/다이아몬드 형태)
         ctx.beginPath();
-        ctx.moveTo(0, -this.radius);
-        ctx.lineTo(this.radius, this.radius);
-        ctx.lineTo(-this.radius, this.radius);
+        ctx.moveTo(0, -this.radius * 1.5);
+        ctx.lineTo(this.radius, 0);
+        ctx.lineTo(0, this.radius * 1.5);
+        ctx.lineTo(-this.radius, 0);
         ctx.closePath();
         
         ctx.fillStyle = '#111';
         ctx.fill();
         ctx.strokeStyle = this.color;
         ctx.lineWidth = 2;
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = 15;
         ctx.shadowColor = this.color;
         ctx.stroke();
         
-        // 코어 발광
+        // 코어 발광 (흰색 소형 원)
         ctx.beginPath();
-        ctx.arc(0, 0, 2, 0, Math.PI * 2);
+        ctx.arc(0, 0, 3, 0, Math.PI * 2);
         ctx.fillStyle = '#fff';
         ctx.fill();
         

@@ -162,15 +162,90 @@ class Game {
         document.getElementById('dev-lvup5').onclick = () => { if (this.player) { for (let i = 0; i < 5; i++) { this.player.level++; } this.player.exp = 0; this.showLevelUpMenu(); this.updateDevInfo(); } };
         document.getElementById('dev-hp').onclick = () => { if (this.player) { this.player.hp = this.player.maxHp; this.updateHUD(); this.updateDevInfo(); } };
         document.getElementById('dev-kill-all').onclick = () => { this.enemies.forEach(e => { this.skillManager.createParticles(e.x, e.y, e.color); this.score++; }); this.enemies = []; this.updateHUD(); this.updateDevInfo(); };
+        
+        const btnAchieve = document.getElementById('btn-achievements');
+        if (btnAchieve) {
+            btnAchieve.onclick = async (e) => {
+                e.preventDefault();
+                document.getElementById('achievement-modal').classList.remove('hidden');
+                const listEl = document.getElementById('achievements-list');
+                listEl.innerHTML = '<div class="text-center text-on-surface/50 font-body py-8">Loading achievements...</div>';
+                
+                if (typeof firebaseDB !== 'undefined' && firebaseDB.user) {
+                    try {
+                        const userData = await firebaseDB.getUserData();
+                        const achievements = userData ? (userData.achievements || []) : [];
+                        const ALL_ACHIEVEMENTS = [
+                            { id: 'BOSS_SLAYER', title: 'BOSS SLAYER', desc: 'Defeated the Cyber Overlord.', icon: '🏆' },
+                            { id: 'ELITE_PILOT', title: 'ELITE PILOT', desc: 'Reached Level 15.', icon: '⭐' }
+                        ];
+                        
+                        listEl.innerHTML = '';
+                        ALL_ACHIEVEMENTS.forEach(ach => {
+                            const isUnlocked = achievements.includes(ach.id);
+                            const row = document.createElement('div');
+                            row.className = `flex items-center gap-4 p-4 rounded-lg border ${isUnlocked ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-surface border-outline-variant/20 text-on-surface/40'}`;
+                            row.innerHTML = `
+                                <div class="text-4xl ${isUnlocked ? '' : 'grayscale opacity-50'}">${ach.icon}</div>
+                                <div>
+                                    <div class="font-headline font-bold text-lg">${ach.title}</div>
+                                    <div class="font-body text-sm ${isUnlocked ? 'text-primary/70' : 'text-on-surface/40'}">${ach.desc}</div>
+                                </div>
+                                <div class="ml-auto font-headline font-bold text-xs tracking-widest ${isUnlocked ? 'text-tertiary' : 'text-on-surface/30'}">
+                                    ${isUnlocked ? 'UNLOCKED' : 'LOCKED'}
+                                </div>
+                            `;
+                            listEl.appendChild(row);
+                        });
+                    } catch(err) {
+                        listEl.innerHTML = '<div class="text-center text-error font-body py-8">Failed to load achievements.</div>';
+                    }
+                } else {
+                    listEl.innerHTML = '<div class="text-center text-on-surface/50 font-body py-8">Please login to view achievements.</div>';
+                }
+            };
+        }
+        const btnCloseAchieve = document.getElementById('btn-close-achievements');
+        if (btnCloseAchieve) {
+            btnCloseAchieve.onclick = () => {
+                document.getElementById('achievement-modal').classList.add('hidden');
+            };
+        }
+
         this.state = 'TITLE'; 
         this.lastFrameTime = performance.now();
         this.fpsCap = 1000 / 60;
+
+        // Firebase 초기화 및 로그인 버튼 연결
+        if (typeof firebaseDB !== 'undefined') {
+            firebaseDB.init();
+            firebaseDB.onAuthChanged = (user) => {
+                const nameEl = document.getElementById('player-name');
+                const rankEl = document.getElementById('player-rank');
+                const loginBtn = document.getElementById('btn-google-login');
+                if (user) {
+                    if (nameEl) nameEl.innerText = user.displayName || 'PILOT';
+                    if (rankEl) rankEl.innerText = 'GOOGLE_LINKED';
+                    if (loginBtn) { loginBtn.querySelector('span:last-child').innerText = 'LOGOUT'; }
+                } else {
+                    if (nameEl) nameEl.innerText = 'PLAYER_ID';
+                    if (rankEl) rankEl.innerText = 'ELITE_PILOT';
+                    if (loginBtn) { loginBtn.querySelector('span:last-child').innerText = 'GOOGLE LOGIN'; }
+                }
+            };
+            document.getElementById('btn-google-login').onclick = async () => {
+                if (firebaseDB.user) await firebaseDB.logout();
+                else await firebaseDB.loginWithGoogle();
+            };
+        }
+
         requestAnimationFrame((t) => this.loop(t));
     }
     init() {
         this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
         this.enemies = []; this.gems = []; this.enemyProjectiles = []; this.score = 0; this.frameCount = 0; this.gameTime = 0;
-        this.bossSpawned = false; this.bossDefeated = false;
+        this.bossSpawned = false; this.bossDefeated = false; this.bossWarning = false;
+        this.shockwave = null;
         this.updateHUD(); 
         this.ui.levelup.classList.add('hidden'); 
         this.state = 'PLAYING';
@@ -179,13 +254,26 @@ class Game {
     }
     spawnEnemy() {
         const lv = this.player.level;
-        if (lv >= 15 && !this.bossSpawned && !this.bossDefeated) {
-            this.enemies = []; this.enemyProjectiles = [];
-            const bx = this.canvas.width / 2, by = 120;
-            this.enemies.push(new Enemy(bx, by, 'boss', lv));
-            this.bossSpawned = true;
+        if (lv >= 15 && !this.bossSpawned && !this.bossDefeated && !this.bossWarning) {
+            this.bossWarning = true;
+            this.enemyProjectiles = [];
+            // 1. 충격파로 잡몹 소탕
+            this.shockwave = { x: this.player.x, y: this.player.y, radius: 0, maxRadius: 2000, speed: 30 };
+            // 2. 경고 사이렌 + Warning UI
+            this.audioManager.playWarningAlarm();
+            const warningEl = document.getElementById('boss-warning');
+            warningEl.classList.remove('hidden');
+            // 3. 3초 후 보스 실제 소환
+            setTimeout(() => {
+                warningEl.classList.add('hidden');
+                const bx = this.canvas.width / 2, by = 120;
+                this.enemies.push(new Enemy(bx, by, 'boss', lv));
+                this.bossSpawned = true;
+                this.audioManager.startBossBGM();
+            }, 3000);
             return;
         }
+        if (this.bossWarning && !this.bossSpawned) return; // 경고 중 스폰 차단
         if (this.bossSpawned && !this.bossDefeated) return;
         const { x, y } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
         let type = 'normal';
@@ -208,7 +296,7 @@ class Game {
         this.audioManager.playLevelUp();
         let pool = [...SKILL_POOL];
         let pickCount = 3;
-        if (this.player.level === 5 || this.player.level === 10) { pool = [...JOB_POOL]; pickCount = 2; }
+        if (this.player.level === 5 && !this.player.job) { pool = [...JOB_POOL]; pickCount = 2; }
         pool.sort(() => 0.5 - Math.random()).slice(0, pickCount).forEach((skill, index) => {
             const card = document.createElement('div'); card.className = 'skill-card';
             card.innerHTML = `${skill.mostPick ? '<div class="most-pick">👍 Most Pick!</div>' : ''}<div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${skill.desc}</div></div>`;
@@ -221,6 +309,23 @@ class Game {
         this.ui.exp.style.width = (this.player.exp / this.player.maxExp * 100) + '%';
         this.ui.score.innerText = this.score; this.ui.level.innerText = this.player.level;
         this.ui.timer.innerText = `${String(Math.floor(this.gameTime / 60)).padStart(2, '0')}:${String(this.gameTime % 60).padStart(2, '0')}`;
+    }
+    showToast(message, icon = '🏆') {
+        const container = document.getElementById('toast-container');
+        if(!container) return;
+        const toast = document.createElement('div');
+        toast.className = 'bg-surface-container-high border border-primary/50 text-primary font-headline flex items-center gap-3 px-4 py-3 rounded shadow-[0_0_15px_rgba(0,218,243,0.3)] transform transition-all duration-300 translate-x-full opacity-0';
+        toast.innerHTML = `<span class="text-2xl">${icon}</span> <span class="font-bold tracking-wider">${message}</span>`;
+        container.appendChild(toast);
+        
+        requestAnimationFrame(() => {
+            toast.classList.remove('translate-x-full', 'opacity-0');
+        });
+        
+        setTimeout(() => {
+            toast.classList.add('translate-x-full', 'opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
     }
     loop(timestamp) {
         requestAnimationFrame((t) => this.loop(t));
@@ -244,6 +349,10 @@ class Game {
                     const title = this.ui.mainOverlay.querySelector('h1'), desc = this.ui.mainOverlay.querySelector('p');
                     if(title) title.innerText = "SYSTEM FAILED"; if(desc) desc.innerHTML = `LV: ${this.player.level} / 생존 시간: ${this.ui.timer.innerText} / 킬수: ${this.score}`;
                     this.ui.startBtn.innerText = "REBOOT SYSTEM";
+                    // Firebase 최고 기록 갱신
+                    if (typeof firebaseDB !== 'undefined' && firebaseDB.user) {
+                        firebaseDB.updateHighScore(this.score, this.gameTime);
+                    }
                 }, 1000);
             }
             this.player.drawDeath(this.ctx); this.skillManager.updateAndDraw(this.ctx); return;
@@ -255,14 +364,58 @@ class Game {
         if (this.frameCount % Math.max(12, 45 - (this.player.level * 2)) === 0) this.spawnEnemy();
         this.enemyProjectiles.forEach((p, i) => { p.update(this.player, this); p.draw(this.ctx); if (p.state === 'DONE') this.enemyProjectiles.splice(i, 1); });
         
-        if (this.player.job === 'cyber' && this.frameCount % 10 === 0) {
+        // 드론 레이저 타겟팅 (접촉 대신 가장 가까운 적에게 레이저)
+        if (this.player.job === 'cyber' && this.frameCount % 15 === 0) {
+            const droneDmg = Math.floor(this.player.attackDamage * 0.3);
             this.player.drones.forEach(d => {
+                let closest = null, closestDist = 300;
                 this.enemies.forEach(e => {
-                    if (Utils.dist(d.x, d.y, e.x, e.y) < d.radius + e.radius) {
-                        e.hp -= d.damage; this.skillManager.createFloatingText(e.x, e.y - 10, d.damage, false, '#0ff'); this.skillManager.createParticles(e.x, e.y, '#0ff');
-                    }
+                    const dd = Utils.dist(d.x, d.y, e.x, e.y);
+                    if (dd < closestDist) { closestDist = dd; closest = e; }
                 });
+                if (closest) {
+                    d.target = closest;
+                    closest.hp -= droneDmg;
+                    this.skillManager.createFloatingText(closest.x, closest.y - 10, droneDmg, false, '#0ff');
+                } else { d.target = null; }
             });
+        }
+        // 드론 레이저 라인 렌더링
+        if (this.player.job === 'cyber') {
+            this.ctx.save();
+            this.player.drones.forEach(d => {
+                if (d.target && d.target.hp > 0) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(d.x, d.y);
+                    this.ctx.lineTo(d.target.x, d.target.y);
+                    this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.stroke();
+                }
+            });
+            this.ctx.restore();
+        }
+
+        // 보스 전조 충격파 렌더링 및 적 소탕
+        if (this.shockwave) {
+            const sw = this.shockwave;
+            sw.radius += sw.speed;
+            this.ctx.save();
+            this.ctx.beginPath();
+            this.ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+            this.ctx.strokeStyle = `rgba(255, 100, 100, ${1 - sw.radius / sw.maxRadius})`;
+            this.ctx.lineWidth = 4;
+            this.ctx.shadowBlur = 20; this.ctx.shadowColor = '#f00';
+            this.ctx.stroke();
+            this.ctx.restore();
+            for (let i = this.enemies.length - 1; i >= 0; i--) {
+                const e = this.enemies[i];
+                if (e.type !== 'boss' && Utils.dist(sw.x, sw.y, e.x, e.y) < sw.radius) {
+                    this.skillManager.createParticles(e.x, e.y, e.color);
+                    this.enemies.splice(i, 1);
+                }
+            }
+            if (sw.radius >= sw.maxRadius) this.shockwave = null;
         }
 
         this.skillManager.attacks.forEach(atk => {
@@ -290,7 +443,21 @@ class Game {
                                 this.skillManager.createParticles(e.x, e.y, e.color);
                                 let gv = (e.type === 'ranged') ? 3 : (e.type === 'bomber' ? 5 : (e.type === 'elite' ? 10 : 1));
                                 if (e.type === 'elite') for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gv));
-                                else if (e.type === 'boss') { for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5)); this.bossDefeated = true; }
+                                else if (e.type === 'boss') {
+                                    for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
+                                    this.bossDefeated = true;
+                                    // 거대 폭발 파티클 (여러 색상 섞기)
+                                    for(let p=0; p<150; p++) {
+                                        this.skillManager.createParticles(e.x, e.y, Math.random() > 0.5 ? '#fbc531' : (Math.random() > 0.5 ? '#f00' : '#fa0'));
+                                    }
+                                    if(this.audioManager.startBGM) this.audioManager.startBGM();
+                                    
+                                    // 업적: BOSS_SLAYER
+                                    if (typeof firebaseDB !== 'undefined') {
+                                        firebaseDB.updateAchievement('BOSS_SLAYER');
+                                        this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
+                                    }
+                                }
                                 else this.gems.push(new Gem(e.x, e.y, gv));
                                 this.enemies.splice(j, 1); this.score++;
                                 if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
@@ -326,8 +493,37 @@ class Game {
     }
     updatePauseMenu() {
         const p = this.player, c = CONFIG.PLAYER;
-        document.getElementById('pause-stats').innerHTML = `<div>HP: ${p.hp}/${p.maxHp}</div><div>ATK: ${p.attackDamage}</div><div>RANGE: ${p.attackRange.toFixed(0)}</div><div>SPD: ${p.speed.toFixed(1)}</div><div>CRIT: ${(p.critChance*100).toFixed(0)}%</div>`;
-        document.getElementById('pause-skills').innerHTML = this.ui.acquiredSkills.innerHTML || 'No Abilities';
+        const diffHp = p.maxHp - c.MAX_HP;
+        const diffAtk = p.attackDamage - c.ATTACK_DAMAGE;
+        const diffRange = Math.round(p.attackRange - c.ATTACK_RANGE);
+        const diffSpd = parseFloat((p.speed - c.SPEED).toFixed(1));
+        const plus = (v) => v > 0 ? ` <span style="color:#4ade80">(+${v})</span>` : '';
+        document.getElementById('pause-stats').innerHTML = `<div>HP: ${p.hp}/${p.maxHp}${plus(diffHp)}</div><div>ATK: ${p.attackDamage}${plus(diffAtk)}</div><div>RANGE: ${p.attackRange.toFixed(0)}${plus(diffRange)}</div><div>SPD: ${p.speed.toFixed(1)}${plus(diffSpd)}</div><div>CRIT: ${(p.critChance*100).toFixed(0)}%${p.critChance > 0 ? plus((p.critChance*100).toFixed(0)) : ''}</div>`;
+        // Pause 메뉴 스킬 리스트 심플하게 재구성
+        const skillsContainer = document.getElementById('pause-skills');
+        skillsContainer.innerHTML = '';
+        skillsContainer.className = "flex flex-col gap-2 overflow-y-auto"; // flex-row -> flex-col 형태로 리스트화
+        Array.from(this.ui.acquiredSkills.children).forEach(iconEl => {
+            const count = iconEl.dataset.count || 1;
+            const name = iconEl.dataset.name || 'Unknown Ability';
+            const iconHTML = iconEl.innerHTML.split('<span')[0]; // count span 제거하고 순수 아이콘만 추출
+            
+            const row = document.createElement('div');
+            row.className = "flex items-center gap-4 bg-surface-container-highest p-2 rounded border border-outline-variant/30";
+            row.innerHTML = `
+                <div class="text-3xl">${iconHTML}</div>
+                <div class="flex-1 font-headline font-bold text-lg text-primary">${name}</div>
+                <div class="text-on-surface/60 font-body font-bold text-lg">Lv.${count}</div>
+            `;
+            // 툴팁 유지
+            row.dataset.tooltip = iconEl.dataset.tooltip;
+            // 툴팁 스타일 호환을 위해 클래스 추가
+            row.classList.add('acquired-icon'); 
+            skillsContainer.appendChild(row);
+        });
+        if (skillsContainer.children.length === 0) {
+            skillsContainer.innerHTML = '<div class="text-on-surface/40 font-body">No Abilities Acquired</div>';
+        }
     }
     addAcquiredSkillUI(skill) {
         let existing = this.ui.acquiredSkills.querySelector(`.acquired-icon[data-id="${skill.id}"]`);
@@ -336,7 +532,10 @@ class Game {
             countSpan.className = 'skill-count'; existing.dataset.count = (parseInt(existing.dataset.count) || 1) + 1;
             countSpan.innerText = `x${existing.dataset.count}`; existing.appendChild(countSpan);
         } else {
-            const el = document.createElement('div'); el.className = 'acquired-icon'; el.dataset.id = skill.id;
+            const el = document.createElement('div'); el.className = 'acquired-icon relative flex items-center justify-center'; el.dataset.id = skill.id;
+            const cleanDesc = skill.desc.replace(/<[^>]+>/g, '');
+            el.dataset.name = skill.name;
+            el.dataset.tooltip = `${skill.name}: ${cleanDesc}`;
             el.innerHTML = skill.icon; this.ui.acquiredSkills.appendChild(el);
         }
     }

@@ -103,6 +103,8 @@ class AudioManager {
             clearInterval(this.bgmInterval);
             this.bgmInterval = null;
         }
+        // 보스 BGM 리소스도 함께 정리
+        this.stopBossBGM();
     }
 
     playNextNote() {
@@ -149,5 +151,99 @@ class AudioManager {
             osc.start(start);
             osc.stop(start + 0.15);
         });
+    }
+
+    // 7. 보스전 경고 사이렌
+    playWarningAlarm() {
+        this.init();
+        if (!this.ctx) return;
+        for (let i = 0; i < 6; i++) {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'square';
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            const start = this.ctx.currentTime + (i * 0.4);
+            osc.frequency.setValueAtTime(i % 2 === 0 ? 880 : 660, start);
+            gain.gain.setValueAtTime(0, start);
+            gain.gain.linearRampToValueAtTime(0.08, start + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.005, start + 0.35);
+            osc.start(start);
+            osc.stop(start + 0.35);
+        }
+    }
+
+    // 8. 보스전 전용 BGM (웅장 + 고속 BPM)
+    startBossBGM() {
+        this.init();
+        this.stopBGM(); // 기존 BGM 중지
+        if (!this.ctx) return;
+
+        // 레이어 1: 저음 드론 (웅장한 지속 베이스)
+        this.bossDrone = this.ctx.createOscillator();
+        this.bossDroneGain = this.ctx.createGain();
+        this.bossDrone.type = 'sawtooth';
+        this.bossDrone.frequency.value = 55; // A1 — 깊은 저음
+        this.bossDroneGain.gain.value = 0.04;
+        this.bossDrone.connect(this.bossDroneGain);
+        this.bossDroneGain.connect(this.ctx.destination);
+        this.bossDrone.start();
+
+        // 레이어 2: 옥타브 서브 베이스
+        this.bossSubDrone = this.ctx.createOscillator();
+        this.bossSubGain = this.ctx.createGain();
+        this.bossSubDrone.type = 'square';
+        this.bossSubDrone.frequency.value = 27.5; // A0 — 극저음 웅웅거림
+        this.bossSubGain.gain.value = 0.02;
+        this.bossSubDrone.connect(this.bossSubGain);
+        this.bossSubGain.connect(this.ctx.destination);
+        this.bossSubDrone.start();
+
+        // 레이어 3: 공격적인 빠른 아르페지오 멜로디
+        this.bgmNotes = [
+            110.00, 130.81, 164.81, 196.00, 220.00, 261.63, // A2→C5 상승
+            246.94, 220.00, 196.00, 164.81, 130.81, 110.00  // 하강
+        ];
+        this.noteIndex = 0;
+        this.bossMelodyInterval = setInterval(() => this.playBossNote(), 140); // ~107 BPM 16분음표
+    }
+
+    playBossNote() {
+        if (!this.ctx) return;
+        const note = this.bgmNotes[this.noteIndex];
+        this.noteIndex = (this.noteIndex + 1) % this.bgmNotes.length;
+
+        // 메인 멜로디 (톱니파 — 날카롭고 공격적)
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.value = note;
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        const now = this.ctx.currentTime;
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.035, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.003, now + 0.12);
+        osc.start(now);
+        osc.stop(now + 0.13);
+
+        // 하모닉스 (5도 위에서 함께 울림 — 웅장감)
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'square';
+        osc2.frequency.value = note * 1.5; // 완전 5도
+        osc2.connect(gain2);
+        gain2.connect(this.ctx.destination);
+        gain2.gain.setValueAtTime(0, now);
+        gain2.gain.linearRampToValueAtTime(0.015, now + 0.02);
+        gain2.gain.exponentialRampToValueAtTime(0.002, now + 0.1);
+        osc2.start(now);
+        osc2.stop(now + 0.11);
+    }
+
+    stopBossBGM() {
+        if (this.bossDrone) { try { this.bossDrone.stop(); } catch(e) {} this.bossDrone = null; }
+        if (this.bossSubDrone) { try { this.bossSubDrone.stop(); } catch(e) {} this.bossSubDrone = null; }
+        if (this.bossMelodyInterval) { clearInterval(this.bossMelodyInterval); this.bossMelodyInterval = null; }
     }
 }
