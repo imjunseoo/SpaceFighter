@@ -15,7 +15,7 @@ class Player {
         this.isDashing = false; this.dashTimer = 0;
         this.maxDashCooldown = CONFIG.PLAYER.MAX_DASH_COOLDOWN; this.dashCooldown = 0;
         this.vampireChance = 0; this.critChance = 0;
-        this.job = null; // 'swordmaster' or 'cyber'
+        this.job = null;
         this.combo = 0; this.comboTimer = 0;
         this.drones = [];
     }

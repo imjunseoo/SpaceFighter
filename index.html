@@ -152,6 +152,10 @@
                         <span class="material-symbols-outlined mr-3 text-sm">military_tech</span>
                         <span>ACHIEVEMENTS</span>
                     </a>
+                    <a id="btn-patch-notes" class="flex items-center text-on-surface/60 hover:bg-surface-container-high hover:text-on-surface px-6 py-4 font-headline text-xs tracking-widest transition-all cursor-pointer">
+                        <span class="material-symbols-outlined mr-3 text-sm">history</span>
+                        <span>PATCH_NOTES</span>
+                    </a>
                 </nav>
                 <div class="mt-auto p-6 space-y-6">
                     <div class="space-y-2">
@@ -266,6 +270,19 @@
         </div>
     </div>
 
+    <!-- Patch Note Modal -->
+    <div id="patch-note-modal" class="fixed inset-0 z-[200] bg-surface/90 backdrop-blur-md flex items-center justify-center hidden">
+        <div class="max-w-2xl w-full mx-4 bg-surface-container border border-primary/20 p-8 rounded-lg shadow-2xl relative">
+            <button id="btn-close-patch-notes" class="absolute top-4 right-4 text-on-surface/50 hover:text-white">
+                <span class="material-symbols-outlined text-3xl">close</span>
+            </button>
+            <h2 class="text-3xl font-headline font-bold text-primary mb-6 flex items-center gap-3">
+                <span class="material-symbols-outlined">history</span> PATCH NOTES
+            </h2>
+            <div id="patch-notes-list" class="space-y-6 max-h-[60vh] overflow-y-auto pr-2 font-body"></div>
+        </div>
+    </div>
+
     <!-- Toast Container -->
     <div id="toast-container" class="fixed bottom-6 right-6 z-[300] flex flex-col gap-3 pointer-events-none"></div>
     <!-- Firebase SDK (CDN) -->
@@ -278,6 +295,7 @@
     <script src="js/audio.js"></script>
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
+    <script src="js/patch-notes-data.js"></script>
     <script src="js/entities.js"></script>
     <script src="js/engine.js"></script>
 </body>

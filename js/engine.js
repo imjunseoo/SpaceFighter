@@ -133,7 +133,13 @@ class Game {
                 this.ui.mainOverlay.classList.add('hidden');
                 this.ui.gameUILayer.classList.remove('hidden');
                 this.canvas.classList.remove('hidden');
+                this.audioManager.init(); // 오디오 컨텍스트 초기화 (자동 재생 우회)
                 this.init(); 
+                if (!this.loopStarted) {
+                    this.loopStarted = true;
+                    this.lastFrameTime = performance.now();
+                    requestAnimationFrame((t) => this.loop(t)); // 게임 메인 루프 실행 시작
+                }
             };
         }
 
@@ -212,6 +218,18 @@ class Game {
             };
         }
 
+        const btnPatch = document.getElementById('btn-patch-notes');
+        if (btnPatch) {
+            btnPatch.onclick = (e) => {
+                e.preventDefault();
+                document.getElementById('patch-note-modal').classList.remove('hidden');
+                this.renderPatchNotes();
+            };
+        }
+        document.getElementById('btn-close-patch-notes').onclick = () => {
+            document.getElementById('patch-note-modal').classList.add('hidden');
+        };
+
         this.state = 'TITLE'; 
         this.lastFrameTime = performance.now();
         this.fpsCap = 1000 / 60;
@@ -238,8 +256,8 @@ class Game {
                 else await firebaseDB.loginWithGoogle();
             };
         }
-
-        requestAnimationFrame((t) => this.loop(t));
+        
+        // 기획서 [Step 3.1] 에 따라 페이지 로드 시 즉시 루프가 실행되지 않도록 여기서 requestAnimationFrame을 호출하지 않습니다.
     }
     init() {
         this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
@@ -572,5 +590,26 @@ class Game {
         }
     }
     updateDevInfo() { if (this.player) document.getElementById('dev-info').innerHTML = `Lv: ${this.player.level} | HP: ${this.player.hp}/${this.player.maxHp}<br>Enemies: ${this.enemies.length}`; }
+    
+    renderPatchNotes() {
+        const listEl = document.getElementById('patch-notes-list');
+        if (!listEl) return;
+        listEl.innerHTML = PATCH_NOTES_DATA.map(note => `
+            <div class="border-b border-outline-variant/10 pb-4 last:border-0">
+                <div class="flex justify-between items-baseline mb-2">
+                    <span class="text-xl font-headline font-bold text-primary">${note.version}</span>
+                    <span class="text-xs text-on-surface/40 font-headline">${note.date}</span>
+                </div>
+                <ul class="space-y-1 text-sm text-on-surface/80">
+                    ${note.items.map(item => `
+                        <li class="flex gap-2">
+                            <span class="font-bold text-tertiary w-20 flex-shrink-0">[${item.type}]</span>
+                            <span>${item.text}</span>
+                        </li>
+                    `).join('')}
+                </ul>
+            </div>
+        `).join('');
+    }
 }
 window.onload = () => { new Game(); };
