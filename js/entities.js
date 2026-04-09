@@ -177,10 +177,11 @@ class Drone {
 }
 
 class Enemy {
-    constructor(x, y, type, playerLevel) {
+    constructor(x, y, type, playerLevel, game) {
         this.x = x; this.y = y; this.type = type;
-        this.speed = (Math.random() * 1 + 1.5 + (playerLevel * 0.05));
-        this.maxHp = 10 + (playerLevel - 1) * 5;
+        const infiniteBonus = game && game.infiniteModeActive ? (playerLevel * 0.3) : 1;
+        this.speed = (Math.random() * 1 + 1.5 + (playerLevel * 0.08));
+        this.maxHp = (10 + (playerLevel - 1) * 8) * infiniteBonus;
         this.radius = 10; this.color = '#f00'; this.knockbackResist = 1;
 
         if (type === 'ranged') {

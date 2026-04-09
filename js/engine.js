@@ -230,6 +230,18 @@ class Game {
             document.getElementById('patch-note-modal').classList.add('hidden');
         };
 
+        const btnLeaderboard = document.getElementById('btn-leaderboard');
+        if (btnLeaderboard) {
+            btnLeaderboard.onclick = (e) => {
+                e.preventDefault();
+                document.getElementById('leaderboard-modal').classList.remove('hidden');
+                this.renderLeaderboard();
+            };
+        }
+        document.getElementById('btn-close-leaderboard').onclick = () => {
+            document.getElementById('leaderboard-modal').classList.add('hidden');
+        };
+
         this.state = 'TITLE'; 
         this.lastFrameTime = performance.now();
         this.fpsCap = 1000 / 60;
@@ -262,7 +274,7 @@ class Game {
     init() {
         this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
         this.enemies = []; this.gems = []; this.items = []; this.enemyProjectiles = []; this.score = 0; this.frameCount = 0; this.gameTime = 0;
-        this.bossSpawned = false; this.bossDefeated = false; this.bossWarning = false;
+        this.bossSpawned = false; this.bossDefeated = false; this.bossWarning = false; this.infiniteModeActive = false;
         this.shockwave = null;
         this.updateHUD(); 
         this.ui.levelup.classList.add('hidden'); 
@@ -307,7 +319,16 @@ class Game {
             if (r < 0.25) type = 'ranged';
         }
         if (type === 'ranged' && this.enemies.filter(e => e.type === 'ranged').length >= 5) type = 'normal';
-        this.enemies.push(new Enemy(x, y, type, lv));
+
+        if (this.infiniteModeActive) {
+            const spawnCount = Math.floor(Math.random() * 3) + 3; // 3~5마리
+            for (let i = 0; i < spawnCount; i++) {
+                const { x: sx, y: sy } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
+                this.enemies.push(new Enemy(sx, sy, type, lv, this));
+            }
+        } else {
+            this.enemies.push(new Enemy(x, y, type, lv, this));
+        }
     }
     showLevelUpMenu() {
         this.state = 'PAUSED'; this.ui.levelup.classList.remove('hidden'); this.ui.cards.innerHTML = '';
@@ -465,17 +486,15 @@ class Game {
                                 else if (e.type === 'boss') {
                                     for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
                                     this.bossDefeated = true;
+                                    this.infiniteModeActive = true;
                                     // 거대 폭발 파티클 (여러 색상 섞기)
                                     for(let p=0; p<150; p++) {
                                         this.skillManager.createParticles(e.x, e.y, Math.random() > 0.5 ? '#fbc531' : (Math.random() > 0.5 ? '#f00' : '#fa0'));
                                     }
                                     if(this.audioManager.startBGM) this.audioManager.startBGM();
-                                    
-                                    // 업적: BOSS_SLAYER
-                                    if (typeof firebaseDB !== 'undefined') {
-                                        firebaseDB.updateAchievement('BOSS_SLAYER');
-                                        this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
-                                    }
+                                    this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
+                                    this.showToast('SYSTEM CLEARED: INFINITE MODE START', '⚠️');
+                                    if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
                                 }
                                 else this.gems.push(new Gem(e.x, e.y, gv));
                                 this.enemies.splice(j, 1); this.score++;
@@ -591,6 +610,38 @@ class Game {
     }
     updateDevInfo() { if (this.player) document.getElementById('dev-info').innerHTML = `Lv: ${this.player.level} | HP: ${this.player.hp}/${this.player.maxHp}<br>Enemies: ${this.enemies.length}`; }
     
+    async renderLeaderboard() {
+        const listEl = document.getElementById('leaderboard-list');
+        listEl.innerHTML = '<div class="text-center text-primary animate-pulse py-8">SYNCING DATA...</div>';
+
+        if (typeof firebaseDB !== 'undefined') {
+            const data = await firebaseDB.getLeaderboard();
+            if (data.length === 0) {
+                listEl.innerHTML = '<div class="text-center text-on-surface/50 py-8">No Data Found.</div>';
+                return;
+            }
+            listEl.innerHTML = data.map((entry, index) => {
+                const isTop3 = index < 3;
+                const rankColor = index === 0 ? 'text-[#ffba38]' : (index === 1 ? 'text-[#adcbda]' : (index === 2 ? 'text-[#ff8a65]' : 'text-on-surface/60'));
+                const isMe = entry.uid === (firebaseDB.user ? firebaseDB.user.uid : '');
+                return `
+                    <div class="flex items-center gap-4 p-4 rounded bg-surface-container-high border ${isTop3 ? 'border-primary/40 shadow-[0_0_10px_rgba(0,218,243,0.1)]' : 'border-outline-variant/10'}">
+                        <span class="w-10 text-2xl font-black ${rankColor}">#${index + 1}</span>
+                        <div class="flex-1">
+                            <div class="text-on-surface font-bold">${entry.displayName || 'PILOT'}</div>
+                            <div class="text-[10px] text-on-surface/40 uppercase tracking-widest">${isMe ? 'YOU' : 'PILOT_ID'}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-primary font-bold">${entry.highScore} KILLS</div>
+                            <div class="text-[10px] text-on-surface/40">${Math.floor(entry.surviveTime/60)}m ${entry.surviveTime%60}s</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            listEl.innerHTML = '<div class="text-center text-on-surface/50 py-8">Firebase not available.</div>';
+        }
+    }
     renderPatchNotes() {
         const listEl = document.getElementById('patch-notes-list');
         if (!listEl) return;
