@@ -204,9 +204,9 @@ class Player {
             case 'reversal': {
                 this.has.reversal = true;
                 const tmp = this.attackDamage;
-                this.attackDamage = this.hp;
-                this.hp = Math.min(this.maxHp, tmp);
-                this.maxHp = Math.max(this.maxHp, this.hp);
+                this.attackDamage = this.maxHp;
+                this.maxHp = tmp;
+                this.hp = Math.min(this.hp, this.maxHp);
                 break;
             }
             case 'berserk':   this.has.berserk = true; break;

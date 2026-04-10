@@ -361,13 +361,17 @@ class Game {
         if (type === 'ranged' && this.enemies.filter(e => e.type === 'ranged').length >= 5) type = 'normal';
 
         if (this.infiniteModeActive) {
-            const spawnCount = Math.floor(Math.random() * 2) + 2; // 2~3마리
+            const spawnCount = Math.floor(Math.random() * 3) + 4; // 4~6마리
             for (let i = 0; i < spawnCount; i++) {
                 const { x: sx, y: sy } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
                 this.enemies.push(new Enemy(sx, sy, type, lv, this));
             }
         } else {
+            // 일반 스테이지: 2마리 스폰, 최소 1마리는 normal 타입
+            const { x: x2, y: y2 } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
+            const type2 = (type === 'normal') ? type : 'normal';
             this.enemies.push(new Enemy(x, y, type, lv, this));
+            this.enemies.push(new Enemy(x2, y2, type2, lv, this));
         }
     }
     showLevelUpMenu() {
@@ -545,7 +549,8 @@ class Game {
             }
         }
         const baseInterval = Math.max(25, 60 - (this.player.level * 2));
-        const spawnInterval = this.infiniteModeActive ? Math.max(20, 60 - (this.player.level * 2))
+        const infiniteInterval = 20 + Math.max(0, (this.player.level - 30) * 2);
+        const spawnInterval = this.infiniteModeActive ? infiniteInterval
                             : this.bossDefeated ? Math.max(12, Math.floor(baseInterval / 2))
                             : baseInterval;
         if (this.frameCount % spawnInterval === 0) this.spawnEnemy();
@@ -865,6 +870,21 @@ class Game {
                     if (this.audioManager.startBGM) this.audioManager.startBGM();
                     this.showToast('GLITCH WEAVER DEFEATED', '⚡'); this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
                 }
+                // 안전망: 어빌리티 등 간접 데미지로 죽은 일반 적 젬 드랍
+                if (e.type !== 'boss' && e.type !== 'glitch_weaver') {
+                    const gv = e.type === 'ranged' ? 3 : (e.type === 'bomber' ? 5 : (e.type === 'elite' ? 10 : 1));
+                    this.skillManager.createParticles(e.x, e.y, e.color);
+                    if (e.type === 'elite') {
+                        this.items.push(new Magnet(e.x, e.y));
+                        for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gv));
+                    } else {
+                        this.gems.push(new Gem(e.x, e.y, gv));
+                    }
+                    this.score++;
+                    if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
+                        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3); this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
+                    }
+                }
                 this.enemies.splice(i, 1); return;
             }
             e.draw(this.ctx, this.player.x, this.player.y);
@@ -1067,7 +1087,7 @@ class Game {
         this.showToast('GLITCH CAGE', '⛓️');
     }
     triggerGlitchMinionSpawn() {
-        const count = 8 + Math.floor(Math.random() * 5);
+        const count = 8 + Math.floor(Math.random() * 5); // 8~12마리
         for (let i = 0; i < count; i++) {
             const { x, y } = Utils.getSpawnPos(CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
             this.enemies.push(new Enemy(x, y, 'normal', this.player.level, this));
@@ -1097,7 +1117,7 @@ class Game {
         }
     }
     handleUIKeys(e) {
-        if (e.key === 'Enter') { this.devToolsOpen = !this.devToolsOpen; this.devUI.classList.toggle('hidden', !this.devToolsOpen); if (this.devToolsOpen) this.updateDevInfo(); return; }
+        if (e.key === '-') { this.devToolsOpen = !this.devToolsOpen; this.devUI.classList.toggle('hidden', !this.devToolsOpen); if (this.devToolsOpen) this.updateDevInfo(); return; }
         if (e.key === 'Escape') { if (this.state === 'PLAYING' || this.state === 'PAUSED_MENU' || this.state === 'PAUSED') this.togglePause(); return; }
         if (this.state !== 'PAUSED') return;
         if (['1', '2', '3'].includes(e.key)) { const cards = this.ui.cards.querySelectorAll('.skill-card'); if (cards[parseInt(e.key) - 1]) cards[parseInt(e.key) - 1].click(); }
