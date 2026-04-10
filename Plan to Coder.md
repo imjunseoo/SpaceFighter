@@ -40,7 +40,22 @@
   const tmp = this.attackDamage;
   this.attackDamage = this.maxHp;
   this.maxHp = tmp;
-  this.hp = this.maxHp; // 교체 후 체력을 풀피로 회복
+  this.hp = this.maxHp; // 이 코드는 필요 없을거같아
+  ```
+
+---
+
+## 4. [Balance] 레벨 15 이후 요구 경험치 동결 로직 수정
+
+### 4.1 경험치 상승 로직 정정 (`entities.js` - gainExp)
+- **현상**: `maxExp`가 레벨업마다 무제한으로 30%씩 상승하여 고레벨 도달이 매우 힘듦.
+- **해결**: 레벨 15 미만일 때만 경험치가 상승하고, 그 이후에는 고정되도록 수정합니다.
+- **상세 코드 지침**:
+  ```javascript
+  this.level++;
+  if (this.level < 15) {
+      this.maxExp = Math.floor(this.maxExp * 1.3);
+  }
   ```
 
 ---
