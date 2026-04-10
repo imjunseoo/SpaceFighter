@@ -168,13 +168,15 @@ class Player {
 
     gainExp(amount) {
         this.exp += amount;
-        if (this.exp >= this.maxExp) {
+        let leveledUp = false;
+        // 한 번에 exp가 대량으로 들어와도 정확히 레벨업 횟수만큼 처리
+        while (this.exp >= this.maxExp) {
             this.exp -= this.maxExp;
-            if (this.level < 15) this.maxExp = Math.floor(this.maxExp * 1.3);
+            this.maxExp = Math.floor(this.maxExp * 1.3); // 레벨에 관계없이 maxExp 계속 상승
             this.level++;
-            return true;
+            leveledUp = true;
         }
-        return false;
+        return leveledUp;
     }
 
     applyUpgrade(skillId) {

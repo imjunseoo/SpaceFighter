@@ -605,7 +605,8 @@ class Game {
                                 this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
                                 this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
                                 if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
-                                setTimeout(() => { this.showAdvancementMenu(); }, 1500);
+                                this.advancementPending = true;
+                                setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
                             }
                         } else if (closest.type === 'glitch_weaver') {
                             for (let k = 0; k < 60; k++) this.gems.push(new Gem(closest.x + Math.random() * 100 - 50, closest.y + Math.random() * 100 - 50, 5));
@@ -840,6 +841,23 @@ class Game {
         this.enemies.forEach((e, i) => {
             e.update(this.player, this);
             if (e.hp <= 0) {
+                // 안전망: 블랙홀/체인번개 등 간접 데미지로 보스가 죽은 경우에도 처치 트리거
+                if (e.type === 'boss' && !this.bossDefeated) {
+                    for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
+                    for (let pk = 0; pk < 150; pk++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#fbc531' : (Math.random() > .5 ? '#f00' : '#fa0'));
+                    if (e.isAmbush) {
+                        this.audioManager.startBGM();
+                        this.showToast('AMBUSH REPELLED', '🏆');
+                    } else {
+                        this.bossDefeated = true;
+                        if (this.audioManager.startBGM) this.audioManager.startBGM();
+                        this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
+                        this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
+                        if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
+                        this.advancementPending = true;
+                        setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
+                    }
+                }
                 // 안전망: 블랙홀 등으로 글리치 위버가 죽은 경우에도 boss2 처치 트리거
                 if (e.type === 'glitch_weaver' && !this.boss2Defeated) {
                     this.boss2Defeated = true; this.infiniteModeActive = true;
