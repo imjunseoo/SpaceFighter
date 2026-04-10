@@ -241,6 +241,52 @@ class AudioManager {
         osc2.stop(now + 0.11);
     }
 
+    // 9. 소드마스터 차징 시작 — 에너지 수렴 허밍 (200→800Hz 상승)
+    playChargeStart() {
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gainNode = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.connect(gainNode);
+        gainNode.connect(this.ctx.destination);
+        const now = this.ctx.currentTime;
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(900, now + 0.42);
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.12, now + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.42);
+        osc.start(now);
+        osc.stop(now + 0.42);
+    }
+
+    // 10. 소드마스터 차징 폭발 해제음 — 저음 충격파 + 고음 슬래시
+    playChargeRelease() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        // 저음 충격파
+        const osc1 = this.ctx.createOscillator();
+        const gain1 = this.ctx.createGain();
+        osc1.type = 'square';
+        osc1.connect(gain1); gain1.connect(this.ctx.destination);
+        osc1.frequency.setValueAtTime(130, now);
+        osc1.frequency.exponentialRampToValueAtTime(35, now + 0.28);
+        gain1.gain.setValueAtTime(0.28, now);
+        gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
+        osc1.start(now); osc1.stop(now + 0.28);
+        // 고음 슬래시
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'sawtooth';
+        osc2.connect(gain2); gain2.connect(this.ctx.destination);
+        osc2.frequency.setValueAtTime(1400, now);
+        osc2.frequency.exponentialRampToValueAtTime(180, now + 0.18);
+        gain2.gain.setValueAtTime(0.18, now);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+        osc2.start(now); osc2.stop(now + 0.18);
+    }
+
     stopBossBGM() {
         if (this.bossDrone) { try { this.bossDrone.stop(); } catch(e) {} this.bossDrone = null; }
         if (this.bossSubDrone) { try { this.bossSubDrone.stop(); } catch(e) {} this.bossSubDrone = null; }

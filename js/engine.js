@@ -19,33 +19,49 @@ class SkillManager {
         let isFullCircle = false;
         let isLinear = false;
 
-        if (player.job === 'swordmaster') {
+        if (player.job === 'overload') {
+            isFullCircle = true;
+        } else if (player.job === 'swordman' || player.job === 'swordmaster') {
             player.combo = (player.combo % 3) + 1;
-            player.comboTimer = 60; 
-            
+            player.comboTimer = 60;
+
             if (player.combo === 2) {
                 radius *= 2.0;
-                damage *= 1.4; // 1.5 -> 1.4 하향
+                damage *= 1.4;
                 isLinear = true;
             } else if (player.combo === 3) {
-                radius *= 2.5; 
-                damage *= 2.2; // 2.5 -> 2.2 하향
+                if (player.job === 'swordmaster') {
+                    // 소드마스터: 차징 진입 — 실제 폭발은 chargeReady 시 발동
+                    player.charging = true;
+                    player.chargeTimer = 25;
+                    return;
+                }
+                radius *= 2.5;
+                damage *= 2.2;
                 isFullCircle = true;
             } else {
-                damage *= 1.1; // 1.2 -> 1.1 하향
+                damage *= 1.1;
             }
         }
 
         const cx = player.x + (isFullCircle ? 0 : player.dirX * (player.attackRange / 2));
         const cy = player.y + (isFullCircle ? 0 : player.dirY * (player.attackRange / 2));
-        const isCrit = Math.random() < player.critChance;
-        
-        this.attacks.push({ 
-            x: cx, y: cy, 
-            radius: radius, 
-            angle: Math.atan2(player.dirY, player.dirX), 
-            life: 12, maxLife: 12, 
-            damage: isCrit ? damage * 2 : damage, 
+        // 서지 캐소드: 활성화 중이면 무조건 크리, 그 후 타이머 소모
+        const isCrit = player.surgeCritActive || Math.random() < player.critChance;
+        let finalDamage = damage;
+        if (isCrit) {
+            finalDamage = damage * player.critMultiplier;
+            // 서지 캐소드 중첩 보너스 (스택당 +10)
+            finalDamage += player.surgeCathodeStacks * 10;
+            if (player.surgeCritActive) { player.surgeCritActive = false; player.surgeCritTimer = 0; }
+        }
+
+        this.attacks.push({
+            x: cx, y: cy,
+            radius: radius,
+            angle: Math.atan2(player.dirY, player.dirX),
+            life: 12, maxLife: 12,
+            damage: finalDamage,
             isCrit,
             isFullCircle,
             isLinear,
@@ -58,10 +74,10 @@ class SkillManager {
     }
     createShatterParticles(x, y, color) {
         for (let i = 0; i < 40; i++) {
-            this.particles.push({ 
-                x, y, vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20, 
-                life: 1.0, decay: Math.random() * 0.02 + 0.02, 
-                color: Math.random() < 0.3 ? '#fff' : color, size: Math.random() * 5 + 2 
+            this.particles.push({
+                x, y, vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20,
+                life: 1.0, decay: Math.random() * 0.02 + 0.02,
+                color: Math.random() < 0.3 ? '#fff' : color, size: Math.random() * 5 + 2
             });
         }
     }
@@ -81,16 +97,16 @@ class SkillManager {
             } else {
                 ctx.arc(atk.x, atk.y, atk.radius, atk.angle - Math.PI / 1.5, atk.angle + Math.PI / 1.5);
             }
-            
+
             let strokeColor = `rgba(0, 255, 255, ${atk.life / atk.maxLife})`;
-            if (atk.combo === 3) strokeColor = `rgba(255, 0, 255, ${atk.life / atk.maxLife})`; 
-            else if (atk.combo === 2) strokeColor = `rgba(255, 255, 255, ${atk.life / atk.maxLife})`; 
-            
-            ctx.lineWidth = 15 * (atk.life / atk.maxLife); 
+            if (atk.combo === 3) strokeColor = `rgba(255, 0, 255, ${atk.life / atk.maxLife})`;
+            else if (atk.combo === 2) strokeColor = `rgba(255, 255, 255, ${atk.life / atk.maxLife})`;
+
+            ctx.lineWidth = 15 * (atk.life / atk.maxLife);
             ctx.strokeStyle = strokeColor;
-            ctx.shadowBlur = 20; 
-            ctx.shadowColor = atk.combo === 3 ? '#f0f' : (atk.combo === 2 ? '#fff' : '#0ff'); 
-            ctx.stroke(); 
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = atk.combo === 3 ? '#f0f' : (atk.combo === 2 ? '#fff' : '#0ff');
+            ctx.stroke();
             ctx.shadowBlur = 0;
         });
         this.particles.forEach((p, i) => {
@@ -100,7 +116,8 @@ class SkillManager {
         ctx.font = 'bold 16px Consolas'; ctx.textAlign = 'center';
         this.floatingTexts.forEach((t, i) => {
             t.y += t.vy; if ((t.life -= 0.05) <= 0) this.floatingTexts.splice(i, 1);
-            ctx.globalAlpha = t.life; ctx.fillStyle = t.isCrit ? '#ff0' : t.color; ctx.font = `bold ${t.isCrit ? 22 : 16}px Consolas`;
+            const fs = t.fontSize || (t.isCrit ? 22 : 16);
+            ctx.globalAlpha = t.life; ctx.fillStyle = t.isCrit ? '#ff0' : t.color; ctx.font = `bold ${fs}px Consolas`;
             ctx.shadowBlur = 5; ctx.shadowColor = t.isCrit ? '#f00' : (t.color === '#4ade80' ? '#0f0' : '#0ff');
             ctx.fillText(t.text, t.x, t.y); ctx.shadowBlur = 0; ctx.globalAlpha = 1.0;
         });
@@ -117,7 +134,7 @@ class Game {
             mainOverlay: document.getElementById('main-ui-overlay'),
             gameUILayer: document.getElementById('game-ui-layer'),
             levelup: document.getElementById('levelup-ui'),
-            cards: document.getElementById('cards-container'), 
+            cards: document.getElementById('cards-container'),
             startBtn: document.getElementById('btn-mission-start'),
             hp: document.getElementById('hp-bar'), exp: document.getElementById('exp-bar'),
             score: document.getElementById('score'), timer: document.getElementById('timer'), level: document.getElementById('player-level'),
@@ -125,16 +142,16 @@ class Game {
             pauseMenu: document.getElementById('pause-menu'), resumeBtn: document.getElementById('resume-btn'),
             restartBtn: document.getElementById('restart-btn')
         };
-        
+
         if (this.ui.startBtn) {
             this.ui.startBtn.onclick = (e) => {
                 e.preventDefault();
-                this.ui.startBtn.blur(); 
+                this.ui.startBtn.blur();
                 this.ui.mainOverlay.classList.add('hidden');
                 this.ui.gameUILayer.classList.remove('hidden');
                 this.canvas.classList.remove('hidden');
                 this.audioManager.init(); // 오디오 컨텍스트 초기화 (자동 재생 우회)
-                this.init(); 
+                this.init();
                 if (!this.loopStarted) {
                     this.loopStarted = true;
                     this.lastFrameTime = performance.now();
@@ -143,23 +160,23 @@ class Game {
             };
         }
 
-        this.ui.resumeBtn.onclick = () => { this.ui.resumeBtn.blur(); if(this.state === 'PAUSED_MENU') this.togglePause(); };
-        this.ui.restartBtn.onclick = () => { 
-            this.ui.restartBtn.blur(); 
-            if(this.state === 'PAUSED_MENU') { 
-                this.togglePause(); 
+        this.ui.resumeBtn.onclick = () => { this.ui.resumeBtn.blur(); if (this.state === 'PAUSED_MENU') this.togglePause(); };
+        this.ui.restartBtn.onclick = () => {
+            this.ui.restartBtn.blur();
+            if (this.state === 'PAUSED_MENU') {
+                this.togglePause();
                 this.state = 'TITLE';
                 this.audioManager.stopBGM();
-                this.ui.pauseMenu.classList.add('hidden'); 
+                this.ui.pauseMenu.classList.add('hidden');
                 this.ui.gameUILayer.classList.add('hidden');
                 this.canvas.classList.add('hidden');
                 this.ui.mainOverlay.classList.remove('hidden');
                 const title = this.ui.mainOverlay.querySelector('h1');
                 const desc = this.ui.mainOverlay.querySelector('p');
-                if(title) title.innerText = "CYBER SURVIVOR";
-                if(desc) desc.innerHTML = "이동: 방향키 (Arrow Keys)<br>공격: Z 키 (전방 범위 공격)<br>회피: Spacebar (무적 대시)";
+                if (title) title.innerText = "CYBER SURVIVOR";
+                if (desc) desc.innerHTML = "이동: 방향키 (Arrow Keys)<br>공격: Z 키 (전방 범위 공격)<br>회피: Spacebar (무적 대시)";
                 this.ui.startBtn.innerText = "MISSION_START";
-            } 
+            }
         };
         window.addEventListener('keydown', (e) => this.handleUIKeys(e));
         this.devToolsOpen = false;
@@ -168,7 +185,7 @@ class Game {
         document.getElementById('dev-lvup5').onclick = () => { if (this.player) { for (let i = 0; i < 5; i++) { this.player.level++; } this.player.exp = 0; this.showLevelUpMenu(); this.updateDevInfo(); } };
         document.getElementById('dev-hp').onclick = () => { if (this.player) { this.player.hp = this.player.maxHp; this.updateHUD(); this.updateDevInfo(); } };
         document.getElementById('dev-kill-all').onclick = () => { this.enemies.forEach(e => { this.skillManager.createParticles(e.x, e.y, e.color); this.score++; }); this.enemies = []; this.updateHUD(); this.updateDevInfo(); };
-        
+
         const btnAchieve = document.getElementById('btn-achievements');
         if (btnAchieve) {
             btnAchieve.onclick = async (e) => {
@@ -176,7 +193,7 @@ class Game {
                 document.getElementById('achievement-modal').classList.remove('hidden');
                 const listEl = document.getElementById('achievements-list');
                 listEl.innerHTML = '<div class="text-center text-on-surface/50 font-body py-8">Loading achievements...</div>';
-                
+
                 if (typeof firebaseDB !== 'undefined' && firebaseDB.user) {
                     try {
                         const userData = await firebaseDB.getUserData();
@@ -185,7 +202,7 @@ class Game {
                             { id: 'BOSS_SLAYER', title: 'BOSS SLAYER', desc: 'Defeated the Cyber Overlord.', icon: '🏆' },
                             { id: 'ELITE_PILOT', title: 'ELITE PILOT', desc: 'Reached Level 15.', icon: '⭐' }
                         ];
-                        
+
                         listEl.innerHTML = '';
                         ALL_ACHIEVEMENTS.forEach(ach => {
                             const isUnlocked = achievements.includes(ach.id);
@@ -203,7 +220,7 @@ class Game {
                             `;
                             listEl.appendChild(row);
                         });
-                    } catch(err) {
+                    } catch (err) {
                         listEl.innerHTML = '<div class="text-center text-error font-body py-8">Failed to load achievements.</div>';
                     }
                 } else {
@@ -242,7 +259,7 @@ class Game {
             document.getElementById('leaderboard-modal').classList.add('hidden');
         };
 
-        this.state = 'TITLE'; 
+        this.state = 'TITLE';
         this.lastFrameTime = performance.now();
         this.fpsCap = 1000 / 60;
 
@@ -268,16 +285,20 @@ class Game {
                 else await firebaseDB.loginWithGoogle();
             };
         }
-        
+
         // 기획서 [Step 3.1] 에 따라 페이지 로드 시 즉시 루프가 실행되지 않도록 여기서 requestAnimationFrame을 호출하지 않습니다.
     }
     init() {
         this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
         this.enemies = []; this.gems = []; this.items = []; this.enemyProjectiles = []; this.score = 0; this.frameCount = 0; this.gameTime = 0;
-        this.bossSpawned = false; this.bossDefeated = false; this.bossWarning = false; this.infiniteModeActive = false;
-        this.shockwave = null;
-        this.updateHUD(); 
-        this.ui.levelup.classList.add('hidden'); 
+        this.bossSpawned = false; this.bossDefeated = false; this.bossWarning = false;
+        this.boss2Warning = false; this.boss2Spawned = false; this.boss2Defeated = false;
+        this.infiniteModeActive = false;
+        this.shockwave = null; this.recoveryShockwave = null; this.recoveryShockwaveUsed = false;
+        this.bullets = []; this.advancementShown = false; this.advancementPending = false;
+        this.infiniteAmbushTimer = 0; this.infiniteAmbushPending = false;
+        this.updateHUD();
+        this.ui.levelup.classList.add('hidden');
         this.state = 'PLAYING';
         this.ui.acquiredSkills.innerHTML = '';
         this.audioManager.startBGM();
@@ -305,6 +326,25 @@ class Game {
         }
         if (this.bossWarning && !this.bossSpawned) return; // 경고 중 스폰 차단
         if (this.bossSpawned && !this.bossDefeated) return;
+
+        // ── 2차 보스: 글리치 위버 (Lv.30, 보스1 처치 이후) ──────────────────────
+        if (lv >= 30 && this.bossDefeated && !this.boss2Spawned && !this.boss2Defeated && !this.boss2Warning) {
+            this.boss2Warning = true;
+            this.enemyProjectiles = [];
+            this.shockwave = { x: this.player.x, y: this.player.y, radius: 0, maxRadius: 2000, speed: 30 };
+            this.audioManager.playWarningAlarm();
+            const warningEl = document.getElementById('boss-warning');
+            warningEl.classList.remove('hidden');
+            setTimeout(() => {
+                warningEl.classList.add('hidden');
+                this.enemies.push(new GlitchWeaver(this.canvas.width / 2, 160));
+                this.boss2Spawned = true;
+                this.audioManager.startBossBGM();
+            }, 3000);
+            return;
+        }
+        if (this.boss2Warning && !this.boss2Spawned) return;
+        if (this.boss2Spawned && !this.boss2Defeated) return;
         const { x, y } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
         let type = 'normal';
         const r = Math.random();
@@ -321,7 +361,7 @@ class Game {
         if (type === 'ranged' && this.enemies.filter(e => e.type === 'ranged').length >= 5) type = 'normal';
 
         if (this.infiniteModeActive) {
-            const spawnCount = Math.floor(Math.random() * 3) + 3; // 3~5마리
+            const spawnCount = Math.floor(Math.random() * 2) + 2; // 2~3마리
             for (let i = 0; i < spawnCount; i++) {
                 const { x: sx, y: sy } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
                 this.enemies.push(new Enemy(sx, sy, type, lv, this));
@@ -331,14 +371,58 @@ class Game {
         }
     }
     showLevelUpMenu() {
+        if (this.advancementPending) return; // 2차 전직 대기 중이면 일반 카드 창 열지 않음
         this.state = 'PAUSED'; this.ui.levelup.classList.remove('hidden'); this.ui.cards.innerHTML = '';
         this.audioManager.playLevelUp();
-        let pool = [...SKILL_POOL];
-        let pickCount = 3;
-        if (this.player.level === 5 && !this.player.job) { pool = [...JOB_POOL]; pickCount = 2; }
-        pool.sort(() => 0.5 - Math.random()).slice(0, pickCount).forEach((skill, index) => {
-            const card = document.createElement('div'); card.className = 'skill-card';
-            card.innerHTML = `${skill.mostPick ? '<div class="most-pick">👍 Most Pick!</div>' : ''}<div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${skill.desc}</div></div>`;
+
+        // 1차 직업 선택 (Lv.5)
+        if (this.player.level === 5 && !this.player.job) {
+            JOB_POOL.filter(j => j.tier === 1).forEach((skill, index) => {
+                const card = document.createElement('div'); card.className = 'skill-card grade-gold';
+                card.innerHTML = `<div class="grade-badge gold">JOB</div><div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${skill.desc}</div></div>`;
+                card.onclick = () => { this.player.applyUpgrade(skill.id); this.addAcquiredSkillUI(skill); this.ui.levelup.classList.add('hidden'); this.ui.cards.innerHTML = ''; this.updateHUD(); this.state = 'PLAYING'; };
+                this.ui.cards.appendChild(card);
+            });
+            return;
+        }
+
+        // 레벨별 등급 확률 결정
+        const lv = this.player.level;
+        const rollGrade = () => {
+            const r = Math.random();
+            if (lv >= 13) {
+                if (r < 0.05) return 'prism';
+                if (r < 0.30) return 'gold';
+                if (r < 0.70) return 'silver';
+                return 'bronze';
+            } else if (lv >= 6) {
+                if (r < 0.15) return 'gold';
+                if (r < 0.50) return 'silver';
+                return 'bronze';
+            } else {
+                return r < 0.20 ? 'silver' : 'bronze';
+            }
+        };
+
+        // Prism 이미 획득한 스킬은 풀에서 제거
+        const availablePool = SKILL_POOL.filter(s => !(s.unique && this.player.has[s.id]));
+
+        const picks = [];
+        for (let i = 0; i < 3; i++) {
+            let grade = rollGrade();
+            // 해당 등급 후보
+            let candidates = availablePool.filter(s => s.grade === grade && !picks.includes(s));
+            // 후보 없으면 등급 다운
+            if (candidates.length === 0) { grade = grade === 'prism' ? 'gold' : grade === 'gold' ? 'silver' : 'bronze'; candidates = availablePool.filter(s => s.grade === grade && !picks.includes(s)); }
+            if (candidates.length === 0) candidates = availablePool.filter(s => !picks.includes(s));
+            if (candidates.length === 0) break;
+            picks.push(candidates[Math.floor(Math.random() * candidates.length)]);
+        }
+
+        picks.forEach((skill, index) => {
+            const gradeLabel = { bronze: '🥉 BRONZE', silver: '🥈 SILVER', gold: '🥇 GOLD', prism: '💎 PRISM' }[skill.grade] || '';
+            const card = document.createElement('div'); card.className = `skill-card grade-${skill.grade}`;
+            card.innerHTML = `<div class="grade-badge ${skill.grade}">${gradeLabel}</div><div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${skill.desc}</div></div>`;
             card.onclick = () => { this.player.applyUpgrade(skill.id); this.addAcquiredSkillUI(skill); this.ui.levelup.classList.add('hidden'); this.ui.cards.innerHTML = ''; this.updateHUD(); this.state = 'PLAYING'; };
             this.ui.cards.appendChild(card);
         });
@@ -351,16 +435,16 @@ class Game {
     }
     showToast(message, icon = '🏆') {
         const container = document.getElementById('toast-container');
-        if(!container) return;
+        if (!container) return;
         const toast = document.createElement('div');
         toast.className = 'bg-surface-container-high border border-primary/50 text-primary font-headline flex items-center gap-3 px-4 py-3 rounded shadow-[0_0_15px_rgba(0,218,243,0.3)] transform transition-all duration-300 translate-x-full opacity-0';
         toast.innerHTML = `<span class="text-2xl">${icon}</span> <span class="font-bold tracking-wider">${message}</span>`;
         container.appendChild(toast);
-        
+
         requestAnimationFrame(() => {
             toast.classList.remove('translate-x-full', 'opacity-0');
         });
-        
+
         setTimeout(() => {
             toast.classList.add('translate-x-full', 'opacity-0');
             setTimeout(() => toast.remove(), 300);
@@ -373,8 +457,9 @@ class Game {
         if (elapsed < this.fpsCap) return;
         this.lastFrameTime = timestamp - (elapsed % this.fpsCap);
         this.playedHitThisFrame = false;
-        this.ctx.fillStyle = '#050510'; this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.strokeStyle = '#112'; this.ctx.lineWidth = 1; this.ctx.beginPath();
+        const isPhase2 = this.bossDefeated;
+        this.ctx.fillStyle = isPhase2 ? '#0a0412' : '#050510'; this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.strokeStyle = isPhase2 ? '#313' : '#112'; this.ctx.lineWidth = 1; this.ctx.beginPath();
         for (let x = 0; x <= this.canvas.width; x += 40) { this.ctx.moveTo(x, 0); this.ctx.lineTo(x, this.canvas.height); }
         for (let y = 0; y <= this.canvas.height; y += 40) { const off = (this.frameCount * 0.5) % 40; this.ctx.moveTo(0, y + off); this.ctx.lineTo(this.canvas.width, y + off); }
         this.ctx.stroke();
@@ -386,7 +471,7 @@ class Game {
                 setTimeout(() => {
                     this.ui.mainOverlay.classList.remove('hidden'); this.ui.gameUILayer.classList.add('hidden'); this.canvas.classList.add('hidden');
                     const title = this.ui.mainOverlay.querySelector('h1'), desc = this.ui.mainOverlay.querySelector('p');
-                    if(title) title.innerText = "SYSTEM FAILED"; if(desc) desc.innerHTML = `LV: ${this.player.level} / 생존 시간: ${this.ui.timer.innerText} / 킬수: ${this.score}`;
+                    if (title) title.innerText = "SYSTEM FAILED"; if (desc) desc.innerHTML = `LV: ${this.player.level} / 생존 시간: ${this.ui.timer.innerText} / 킬수: ${this.score}`;
                     this.ui.startBtn.innerText = "REBOOT SYSTEM";
                     // Firebase 최고 기록 갱신
                     if (typeof firebaseDB !== 'undefined' && firebaseDB.user) {
@@ -399,13 +484,76 @@ class Game {
         if (this.state === 'GAMEOVER') { this.gems.forEach(g => g.draw(this.ctx)); this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); this.enemyProjectiles.forEach(p => p.draw(this.ctx)); this.skillManager.updateAndDraw(this.ctx); return; }
         if (this.state === 'PAUSED' || this.state === 'PAUSED_MENU') { this.gems.forEach(g => g.draw(this.ctx)); this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); this.enemyProjectiles.forEach(p => p.draw(this.ctx)); this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx); return; }
         this.frameCount++; if (this.frameCount % 60 === 0) { this.gameTime++; this.updateHUD(); }
-        this.player.update(this.input); if (this.input.keys.z && this.player.cooldown <= 0) { this.skillManager.triggerAttack(this.player); this.audioManager.playSwordSlash(); this.player.cooldown = this.player.maxCooldown; }
-        if (this.frameCount % Math.max(12, 45 - (this.player.level * 2)) === 0) this.spawnEnemy();
+        // 인피니티 모드 돌발 이벤트 — 3분(10800프레임)마다 위협 발생
+        if (this.infiniteModeActive && !this.infiniteAmbushPending) {
+            this.infiniteAmbushTimer++;
+            if (this.infiniteAmbushTimer >= 10800) { this.infiniteAmbushTimer = 0; this.triggerInfiniteAmbush(); }
+        }
+        this.player.update(this.input);
+
+        // 소드마스터 차징 완료 — 광범위 폭발 발동
+        if (this.player.chargeReady) {
+            this.player.chargeReady = false;
+            this.player.combo = 0;
+            const p = this.player;
+            const isCrit = Math.random() < p.critChance;
+            const chargeDmg = p.attackDamage * 7.0;
+            const finalChargeDmg = isCrit ? chargeDmg * p.critMultiplier : chargeDmg;
+            this.skillManager.attacks.push({
+                x: p.x, y: p.y, radius: p.attackRange * 2, angle: 0,
+                life: 20, maxLife: 20, damage: finalChargeDmg, isCrit, isFullCircle: true, isLinear: false,
+                combo: 3, hitTargets: new Set()
+            });
+            for (let k = 0; k < 3; k++) this.skillManager.createParticles(p.x, p.y, k % 2 === 0 ? '#f0f' : '#fff');
+            this.audioManager.playChargeRelease();
+        }
+
+        // Z키: 거너/데스페라도는 자동조준 사용 (Z키 근접 공격 제외)
+        if (this.input.keys.z && this.player.cooldown <= 0) {
+            const isGunner = this.player.job === 'gunner' || this.player.job === 'desperado';
+            if (!isGunner) {
+                this.skillManager.triggerAttack(this.player);
+                // 소드마스터 차징 진입 시 빌드업 사운드, 그 외 일반 슬래쉬
+                if (this.player.charging && this.player.chargeTimer === 25) {
+                    this.audioManager.playChargeStart();
+                } else {
+                    this.audioManager.playSwordSlash();
+                }
+                this.player.cooldown = this.player.maxCooldown;
+            }
+        }
+
+        // 거너 / 데스페라도: Z키 홀드 시 자동 조준 사격
+        if ((this.player.job === 'gunner' || this.player.job === 'desperado') && this.input.keys.z && this.player.cooldown <= 0) {
+            let nearest = null, nearestDist = Infinity;
+            this.enemies.forEach(e => { const d = Utils.dist(this.player.x, this.player.y, e.x, e.y); if (d < nearestDist) { nearestDist = d; nearest = e; } });
+            if (nearest) {
+                const angle = Utils.angle(this.player.x, this.player.y, nearest.x, nearest.y);
+                const isDesp = this.player.job === 'desperado';
+                // 크리티컬 계산 (근접공격과 동일 메커니즘)
+                const isCrit = this.player.surgeCritActive || Math.random() < this.player.critChance;
+                let bDmg = isDesp ? this.player.attackDamage * 1.8 : this.player.attackDamage;
+                if (isCrit) {
+                    bDmg = bDmg * this.player.critMultiplier + this.player.surgeCathodeStacks * 10;
+                    if (this.player.surgeCritActive) { this.player.surgeCritActive = false; this.player.surgeCritTimer = 0; }
+                }
+                const bSize = isDesp ? 10 : 5; const bSpeed = isDesp ? 20 : 15;
+                const bColor = isCrit ? '#fff' : (isDesp ? '#ff6600' : '#ff0');
+                this.bullets.push(new Bullet(this.player.x, this.player.y, angle, bDmg, bColor, bSpeed, bSize, isCrit));
+                this.player.cooldown = this.player.maxCooldown;
+                this.audioManager.playSwordSlash();
+            }
+        }
+        const baseInterval = Math.max(25, 60 - (this.player.level * 2));
+        const spawnInterval = this.infiniteModeActive ? Math.max(20, 60 - (this.player.level * 2))
+                            : this.bossDefeated ? Math.max(12, Math.floor(baseInterval / 2))
+                            : baseInterval;
+        if (this.frameCount % spawnInterval === 0) this.spawnEnemy();
         this.enemyProjectiles.forEach((p, i) => { p.update(this.player, this); p.draw(this.ctx); if (p.state === 'DONE') this.enemyProjectiles.splice(i, 1); });
-        
-        // 드론 레이저 타겟팅 (접촉 대신 가장 가까운 적에게 레이저)
-        if (this.player.job === 'cyber' && this.frameCount % 15 === 0) {
-            const droneDmg = Math.floor(this.player.attackDamage * 0.3);
+
+        // 드론 레이저 타겟팅 (메카닉/사이버: 가장 가까운 적에게 레이저)
+        if ((this.player.job === 'mecha' || this.player.job === 'cyber') && this.frameCount % 15 === 0) {
+            const baseDmg = this.player.attackDamage * 0.5; // 공격력의 50%
             this.player.drones.forEach(d => {
                 let closest = null, closestDist = 300;
                 this.enemies.forEach(e => {
@@ -414,25 +562,106 @@ class Game {
                 });
                 if (closest) {
                     d.target = closest;
+                    // 크리티컬 계산
+                    const isCrit = this.player.surgeCritActive || Math.random() < this.player.critChance;
+                    let droneDmg = baseDmg;
+                    if (isCrit) {
+                        droneDmg = baseDmg * this.player.critMultiplier + this.player.surgeCathodeStacks * 10;
+                        if (this.player.surgeCritActive) { this.player.surgeCritActive = false; this.player.surgeCritTimer = 0; }
+                    }
+                    droneDmg = Math.floor(droneDmg);
                     closest.hp -= droneDmg;
-                    this.skillManager.createFloatingText(closest.x, closest.y - 10, Math.round(droneDmg), false, '#0ff');
+                    this.skillManager.createFloatingText(closest.x, closest.y - 10, droneDmg, isCrit, '#0ff');
+
+                    // 연쇄 번개
+                    if (isCrit && this.player.chainLightningStacks > 0) {
+                        const lightningDmg = 10 * this.player.chainLightningStacks;
+                        const targets = this.enemies.filter(t => t !== closest && t.hp > 0).sort((a, c) => Utils.dist(closest.x, closest.y, a.x, a.y) - Utils.dist(closest.x, closest.y, c.x, c.y)).slice(0, 3);
+                        targets.forEach(t => {
+                            t.hp -= lightningDmg;
+                            this.skillManager.createFloatingText(t.x, t.y - 10, Math.round(lightningDmg), false, '#ff0');
+                            this.skillManager.createParticles(t.x, t.y, '#ff0');
+                        });
+                    }
+                    // 특이점(블랙홀)
+                    if (this.player.has.blackhole && Math.random() < 0.01) {
+                        this.player.blackholes.push({ x: closest.x, y: closest.y, life: 180, maxLife: 180 });
+                    }
+
+                    if (closest.hp <= 0) {
+                        this.skillManager.createParticles(closest.x, closest.y, closest.color);
+                        if (closest.type === 'elite') this.items.push(new Magnet(closest.x, closest.y));
+                        const gv = closest.type === 'ranged' ? 3 : (closest.type === 'bomber' ? 5 : (closest.type === 'elite' ? 10 : 1));
+                        if (closest.type === 'elite') { for (let k = 0; k < 5; k++) this.gems.push(new Gem(closest.x + Math.random() * 30 - 15, closest.y + Math.random() * 30 - 15, gv)); }
+                        else if (closest.type === 'boss') {
+                            for (let k = 0; k < 30; k++) this.gems.push(new Gem(closest.x + Math.random() * 80 - 40, closest.y + Math.random() * 80 - 40, 5));
+                            for (let pk = 0; pk < 150; pk++) this.skillManager.createParticles(closest.x, closest.y, Math.random() > .5 ? '#fbc531' : (Math.random() > .5 ? '#f00' : '#fa0'));
+                            if (closest.isAmbush) {
+                                this.audioManager.startBGM();
+                                this.showToast('AMBUSH REPELLED', '🏆');
+                            } else {
+                                this.bossDefeated = true;
+                                if (this.audioManager.startBGM) this.audioManager.startBGM();
+                                this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
+                                this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
+                                if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
+                                setTimeout(() => { this.showAdvancementMenu(); }, 1500);
+                            }
+                        } else if (closest.type === 'glitch_weaver') {
+                            for (let k = 0; k < 60; k++) this.gems.push(new Gem(closest.x + Math.random() * 100 - 50, closest.y + Math.random() * 100 - 50, 5));
+                            this.boss2Defeated = true; this.infiniteModeActive = true;
+                            for (let pk = 0; pk < 200; pk++) this.skillManager.createParticles(closest.x, closest.y, Math.random() > .5 ? '#0ff' : (Math.random() > .5 ? '#f0f' : '#fff'));
+                            if (this.audioManager.startBGM) this.audioManager.startBGM();
+                            this.showToast('GLITCH WEAVER DEFEATED', '⚡');
+                            this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
+                        } else this.gems.push(new Gem(closest.x, closest.y, gv));
+                        const idx = this.enemies.indexOf(closest);
+                        if (idx !== -1) this.enemies.splice(idx, 1);
+                        this.score++;
+                        if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
+                            this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3);
+                            this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
+                        }
+                        this.updateHUD();
+                    }
                 } else { d.target = null; }
             });
         }
+        // 오버로드: 360도 방사형 관통 사격
+        if (this.player.job === 'overload' && this.frameCount % 20 === 0) {
+            const droneDmg = this.player.attackDamage;
+            this.player.drones.forEach(d => {
+                const fireAngle = Utils.angle(this.player.x, this.player.y, d.x, d.y);
+                this.bullets.push(new Bullet(d.x, d.y, fireAngle, droneDmg, '#f7d774', 14, 6, false, true));
+            });
+        }
+
         // 드론 레이저 라인 렌더링
-        if (this.player.job === 'cyber') {
-            this.ctx.save();
+        if (this.player.job === 'mecha' || this.player.job === 'cyber') {
             this.player.drones.forEach(d => {
                 if (d.target && d.target.hp > 0) {
+                    this.ctx.save();
+                    // 외곽 글로우 레이어
                     this.ctx.beginPath();
                     this.ctx.moveTo(d.x, d.y);
                     this.ctx.lineTo(d.target.x, d.target.y);
-                    this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
-                    this.ctx.lineWidth = 1;
+                    this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+                    this.ctx.lineWidth = 8;
+                    this.ctx.shadowBlur = 20;
+                    this.ctx.shadowColor = '#0ff';
                     this.ctx.stroke();
+                    // 중심 밝은 코어
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(d.x, d.y);
+                    this.ctx.lineTo(d.target.x, d.target.y);
+                    this.ctx.strokeStyle = '#0ff';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.shadowBlur = 10;
+                    this.ctx.shadowColor = '#fff';
+                    this.ctx.stroke();
+                    this.ctx.restore();
                 }
             });
-            this.ctx.restore();
         }
 
         // 보스 전조 충격파 렌더링 및 적 소탕
@@ -457,6 +686,59 @@ class Game {
             if (sw.radius >= sw.maxRadius) this.shockwave = null;
         }
 
+        // 리커버리 충격파 렌더링
+        if (this.recoveryShockwave) {
+            const rs = this.recoveryShockwave;
+            rs.radius += 50;
+            this.ctx.save();
+            this.ctx.beginPath(); this.ctx.arc(rs.x, rs.y, rs.radius, 0, Math.PI * 2);
+            this.ctx.strokeStyle = `rgba(255,255,255,${Math.max(0, 1 - rs.radius / 2000)})`;
+            this.ctx.lineWidth = 8; this.ctx.shadowBlur = 30; this.ctx.shadowColor = '#fff';
+            this.ctx.stroke(); this.ctx.restore();
+            // 주변 적 파괴
+            for (let i = this.enemies.length - 1; i >= 0; i--) {
+                if (Utils.dist(rs.x, rs.y, this.enemies[i].x, this.enemies[i].y) < rs.radius) {
+                    this.skillManager.createParticles(this.enemies[i].x, this.enemies[i].y, this.enemies[i].color);
+                    this.enemies.splice(i, 1);
+                }
+            }
+            if (rs.radius >= 2000) this.recoveryShockwave = null;
+        }
+
+        // 블랙홀 렌더링 및 흡수/데미지
+        if (this.player.blackholes.length > 0) {
+            for (let i = this.player.blackholes.length - 1; i >= 0; i--) {
+                const bh = this.player.blackholes[i];
+                if (bh.life <= 0) { this.player.blackholes.splice(i, 1); continue; }
+                bh.life--;
+                const bhRadius = 60;
+                // 시각
+                this.ctx.save();
+                this.ctx.beginPath(); this.ctx.arc(bh.x, bh.y, bhRadius, 0, Math.PI * 2);
+                this.ctx.fillStyle = `rgba(10,0,30,${0.5 + 0.3 * Math.sin(bh.life * 0.2)})`;
+                this.ctx.shadowBlur = 30; this.ctx.shadowColor = '#80f';
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#80f'; this.ctx.lineWidth = 2; this.ctx.stroke();
+                this.ctx.restore();
+                // 주변 적 흡수 + 지속 데미지
+                if (bh.life % 10 === 0) {
+                    this.enemies.forEach(en => {
+                        const dd = Utils.dist(bh.x, bh.y, en.x, en.y);
+                        if (dd < 200) {
+                            // 끌어당김
+                            const ang = Utils.angle(en.x, en.y, bh.x, bh.y);
+                            en.x += Math.cos(ang) * 4; en.y += Math.sin(ang) * 4;
+                        }
+                        if (dd < bhRadius) {
+                            en.hp -= 5; this.skillManager.createFloatingText(en.x, en.y - 10, '5', false, '#80f');
+                        }
+                    });
+                    // 젬도 흡수
+                    this.gems.forEach(g => { if (Utils.dist(bh.x, bh.y, g.x, g.y) < 200) g.isAttracted = true; });
+                }
+            }
+        }
+
         this.skillManager.attacks.forEach(atk => {
             if (atk.life >= atk.maxLife - 3) {
                 for (let j = this.enemies.length - 1; j >= 0; j--) {
@@ -477,6 +759,29 @@ class Game {
                             if (atk.hitTargets.has(e)) continue;
                             atk.hitTargets.add(e); if (!this.playedHitThisFrame) { this.audioManager.playHit(); this.playedHitThisFrame = true; }
                             e.hp -= atk.damage; this.skillManager.createFloatingText(e.x, e.y - 15, Math.round(atk.damage), atk.isCrit);
+                            // 연쇄 번개: 크리티컬 적중 시 주변 3마리에게 번개
+                            if (atk.isCrit && this.player.chainLightningStacks > 0) {
+                                const lightningDmg = 10 * this.player.chainLightningStacks;
+                                const targets = this.enemies.filter(t => t !== e && t.hp > 0).sort((a, b) => Utils.dist(e.x, e.y, a.x, a.y) - Utils.dist(e.x, e.y, b.x, b.y)).slice(0, 3);
+                                targets.forEach(t => {
+                                    t.hp -= lightningDmg;
+                                    this.skillManager.createFloatingText(t.x, t.y - 10, Math.round(lightningDmg), false, '#ff0');
+                                    this.skillManager.createParticles(t.x, t.y, '#ff0');
+                                    // 번개 라인 그리기
+                                    this.ctx.save();
+                                    // 외곽 글로우
+                                    this.ctx.beginPath(); this.ctx.moveTo(e.x, e.y); this.ctx.lineTo(t.x, t.y);
+                                    this.ctx.strokeStyle = 'rgba(255,220,0,0.4)'; this.ctx.lineWidth = 8; this.ctx.shadowBlur = 25; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
+                                    // 코어
+                                    this.ctx.beginPath(); this.ctx.moveTo(e.x, e.y); this.ctx.lineTo(t.x, t.y);
+                                    this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 2; this.ctx.shadowBlur = 12; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
+                                    this.ctx.restore();
+                                });
+                            }
+                            // 특이점(블랙홀): 공격 시 1% 확률
+                            if (this.player.has.blackhole && Math.random() < 0.01) {
+                                this.player.blackholes.push({ x: atk.x, y: atk.y, life: 180, maxLife: 180 });
+                            }
                             e.knockbackX = Math.cos(a) * (atk.isFullCircle ? 25 : 15); e.knockbackY = Math.sin(a) * (atk.isFullCircle ? 25 : 15);
                             if (e.hp <= 0) {
                                 this.skillManager.createParticles(e.x, e.y, e.color);
@@ -485,21 +790,30 @@ class Game {
                                 if (e.type === 'elite') for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gv));
                                 else if (e.type === 'boss') {
                                     for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
-                                    this.bossDefeated = true;
-                                    this.infiniteModeActive = true;
-                                    // 거대 폭발 파티클 (여러 색상 섞기)
-                                    for(let p=0; p<150; p++) {
-                                        this.skillManager.createParticles(e.x, e.y, Math.random() > 0.5 ? '#fbc531' : (Math.random() > 0.5 ? '#f00' : '#fa0'));
+                                    for (let p = 0; p < 150; p++) this.skillManager.createParticles(e.x, e.y, Math.random() > 0.5 ? '#fbc531' : (Math.random() > 0.5 ? '#f00' : '#fa0'));
+                                    if (e.isAmbush) {
+                                        this.audioManager.startBGM();
+                                        this.showToast('AMBUSH REPELLED', '🏆');
+                                    } else {
+                                        this.bossDefeated = true;
+                                        if (this.audioManager.startBGM) this.audioManager.startBGM();
+                                        this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
+                                        this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
+                                        if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
+                                        this.advancementPending = true;
+                                        setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
                                     }
-                                    if(this.audioManager.startBGM) this.audioManager.startBGM();
-                                    this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
-                                    this.showToast('SYSTEM CLEARED: INFINITE MODE START', '⚠️');
-                                    if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
-                                }
-                                else this.gems.push(new Gem(e.x, e.y, gv));
+                                } else if (e.type === 'glitch_weaver') {
+                                    for (let k = 0; k < 60; k++) this.gems.push(new Gem(e.x + Math.random() * 100 - 50, e.y + Math.random() * 100 - 50, 5));
+                                    this.boss2Defeated = true; this.infiniteModeActive = true;
+                                    for (let p = 0; p < 200; p++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#0ff' : (Math.random() > .5 ? '#f0f' : '#fff'));
+                                    if (this.audioManager.startBGM) this.audioManager.startBGM();
+                                    this.showToast('GLITCH WEAVER DEFEATED', '⚡');
+                                    this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
+                                } else this.gems.push(new Gem(e.x, e.y, gv));
                                 this.enemies.splice(j, 1); this.score++;
                                 if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
-                                    this.player.hp = Math.min(this.player.maxHp, this.player.hp + 5); this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+5', false, '#4ade80');
+                                    this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3); this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
                                 }
                                 this.updateHUD();
                             } else this.skillManager.createParticles(e.x, e.y, '#fff');
@@ -508,7 +822,7 @@ class Game {
                 }
             }
         });
-        
+
         // 아이템 처리 (자석 등)
         this.items.forEach((item, i) => {
             item.update(this.player);
@@ -524,24 +838,269 @@ class Game {
 
         this.gems.forEach((g, i) => { g.update(this.player); g.draw(this.ctx); if (g.isCollected) { this.gems.splice(i, 1); this.audioManager.playGem(); if (this.player.gainExp(g.expValue)) this.showLevelUpMenu(); this.updateHUD(); } });
         this.enemies.forEach((e, i) => {
-            e.update(this.player, this); if (e.hp <= 0) { this.enemies.splice(i, 1); return; }
+            e.update(this.player, this);
+            if (e.hp <= 0) {
+                // 안전망: 블랙홀 등으로 글리치 위버가 죽은 경우에도 boss2 처치 트리거
+                if (e.type === 'glitch_weaver' && !this.boss2Defeated) {
+                    this.boss2Defeated = true; this.infiniteModeActive = true;
+                    for (let k = 0; k < 60; k++) this.gems.push(new Gem(e.x + Math.random() * 100 - 50, e.y + Math.random() * 100 - 50, 5));
+                    if (this.audioManager.startBGM) this.audioManager.startBGM();
+                    this.showToast('GLITCH WEAVER DEFEATED', '⚡'); this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
+                }
+                this.enemies.splice(i, 1); return;
+            }
             e.draw(this.ctx, this.player.x, this.player.y);
             if (Utils.dist(this.player.x, this.player.y, e.x, e.y) < this.player.radius + e.radius && !this.player.isDashing && this.player.invincible <= 0) {
-                if (this.player.takeDamage(10)) this.triggerGameOver(); this.updateHUD();
+                if (this.player.takeDamage(e.contactDamage || 10)) { this.triggerGameOver(); } else { this.checkRecoveryTrigger(); } this.updateHUD();
             }
         });
+        // 탄환 (거너 / 오버로드) 처리
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            const b = this.bullets[i];
+            b.update(); b.draw(this.ctx);
+            if (!b.isAlive) { this.bullets.splice(i, 1); continue; }
+            for (let j = this.enemies.length - 1; j >= 0; j--) {
+                const e = this.enemies[j];
+                if (b.hitTargets.has(e)) continue;
+                if (Utils.dist(b.x, b.y, e.x, e.y) < e.radius + b.size) {
+                    b.hitTargets.add(e);
+                    e.hp -= b.damage;
+                    this.skillManager.createFloatingText(e.x, e.y - 15, Math.round(b.damage), b.isCrit);
+                    this.skillManager.createParticles(e.x, e.y, b.color);
+                    if (!this.playedHitThisFrame) { this.audioManager.playHit(); this.playedHitThisFrame = true; }
+
+                    // 연쇄 번개: 크리티컬 적중 시
+                    if (b.isCrit && this.player.chainLightningStacks > 0) {
+                        const lightningDmg = 10 * this.player.chainLightningStacks;
+                        const targets = this.enemies.filter(t => t !== e && t.hp > 0).sort((a, c) => Utils.dist(e.x, e.y, a.x, a.y) - Utils.dist(e.x, e.y, c.x, c.y)).slice(0, 3);
+                        targets.forEach(t => {
+                            t.hp -= lightningDmg;
+                            this.skillManager.createFloatingText(t.x, t.y - 10, Math.round(lightningDmg), false, '#ff0');
+                            this.skillManager.createParticles(t.x, t.y, '#ff0');
+                            this.ctx.save();
+                            this.ctx.beginPath(); this.ctx.moveTo(e.x, e.y); this.ctx.lineTo(t.x, t.y);
+                            this.ctx.strokeStyle = 'rgba(255,220,0,0.4)'; this.ctx.lineWidth = 8; this.ctx.shadowBlur = 25; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
+                            this.ctx.beginPath(); this.ctx.moveTo(e.x, e.y); this.ctx.lineTo(t.x, t.y);
+                            this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 2; this.ctx.shadowBlur = 12; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
+                            this.ctx.restore();
+                        });
+                    }
+
+                    // 특이점(블랙홀): 공격 시 1% 확률
+                    if (this.player.has.blackhole && Math.random() < 0.01) {
+                        this.player.blackholes.push({ x: b.x, y: b.y, life: 180, maxLife: 180 });
+                    }
+
+                    // 데스페라도: 적중 지점에 원형 폭발 AOE
+                    if (this.player.job === 'desperado') {
+                        this.skillManager.attacks.push({
+                            x: e.x, y: e.y,
+                            radius: this.player.attackRange,
+                            angle: 0, life: 12, maxLife: 12,
+                            damage: b.damage * 0.6,
+                            isCrit: b.isCrit, isFullCircle: true, isLinear: false,
+                            combo: 0, hitTargets: new Set([e])
+                        });
+                        this.skillManager.createParticles(e.x, e.y, '#ff6600');
+                    }
+
+                    if (e.hp <= 0) {
+                        this.skillManager.createParticles(e.x, e.y, e.color);
+                        if (e.type === 'elite') this.items.push(new Magnet(e.x, e.y));
+                        const gv = e.type === 'ranged' ? 3 : (e.type === 'bomber' ? 5 : (e.type === 'elite' ? 10 : 1));
+                        if (e.type === 'elite') { for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gv)); }
+                        else if (e.type === 'boss') {
+                            for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
+                            for (let pk = 0; pk < 150; pk++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#fbc531' : (Math.random() > .5 ? '#f00' : '#fa0'));
+                            if (e.isAmbush) {
+                                this.audioManager.startBGM();
+                                this.showToast('AMBUSH REPELLED', '🏆');
+                            } else {
+                                this.bossDefeated = true;
+                                if (this.audioManager.startBGM) this.audioManager.startBGM();
+                                this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
+                                this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
+                                if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
+                                this.advancementPending = true;
+                                setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
+                            }
+                        } else if (e.type === 'glitch_weaver') {
+                            for (let k = 0; k < 60; k++) this.gems.push(new Gem(e.x + Math.random() * 100 - 50, e.y + Math.random() * 100 - 50, 5));
+                            this.boss2Defeated = true; this.infiniteModeActive = true;
+                            for (let pk = 0; pk < 200; pk++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#0ff' : (Math.random() > .5 ? '#f0f' : '#fff'));
+                            if (this.audioManager.startBGM) this.audioManager.startBGM();
+                            this.showToast('GLITCH WEAVER DEFEATED', '⚡');
+                            this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
+                        } else this.gems.push(new Gem(e.x, e.y, gv));
+                        this.enemies.splice(j, 1); this.score++;
+                        if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
+                            this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3);
+                            this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
+                        }
+                        this.updateHUD();
+                    }
+                    if (!b.piercing) { b.isAlive = false; break; }
+                }
+            }
+        }
+
+        // 소드마스터 차징 VFX (외부에서 수렴하는 원 — 에너지가 안쪽으로 모임)
+        if (this.player.charging) {
+            const progress = 1 - this.player.chargeTimer / 25; // 0 → 1
+            this.ctx.save();
+            // 반지름: 100 → 20 (수축), 선 두께·밝기: 진입할수록 강해짐
+            this.ctx.beginPath(); this.ctx.arc(this.player.x, this.player.y, 100 - progress * 80, 0, Math.PI * 2);
+            this.ctx.strokeStyle = `rgba(255,0,255,${0.3 + progress * 0.65})`;
+            this.ctx.lineWidth = 3 + progress * 7; this.ctx.shadowBlur = 30; this.ctx.shadowColor = '#f0f';
+            this.ctx.stroke(); this.ctx.restore();
+        }
+
         this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx);
     }
+    showAdvancementMenu() {
+        if (this.advancementShown) return;
+        const jobMap = { 'swordman': 'install_sword', 'gunner': 'install_gunner', 'mecha': 'install_mecha' };
+        const req = jobMap[this.player.job];
+        if (!req) return; // 직업 없거나 이미 2차 전직 상태
+        const advancement = JOB_POOL.filter(j => j.tier === 2 && j.requires === req);
+        if (advancement.length === 0) return;
+        this.advancementShown = true;
+        this.audioManager.playLevelUp();
+        this.state = 'PAUSED';
+        this.ui.levelup.classList.remove('hidden');
+        this.ui.levelup.classList.add('advancement-active');
+        this.ui.levelup.querySelector('h2').textContent = 'JOB ADVANCEMENT';
+        this.ui.cards.innerHTML = '';
+        advancement.forEach((skill, index) => {
+            const card = document.createElement('div'); card.className = 'skill-card grade-prism';
+            card.innerHTML = `<div class="grade-badge prism">2차 전직</div><div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${skill.desc}</div></div>`;
+            card.onclick = () => {
+                this.player.applyUpgrade(skill.id); this.addAcquiredSkillUI(skill);
+                this.ui.levelup.classList.remove('advancement-active');
+                this.ui.levelup.querySelector('h2').textContent = 'SYSTEM UPGRADE';
+                this.ui.levelup.classList.add('hidden'); this.ui.cards.innerHTML = ''; this.updateHUD(); this.state = 'PLAYING';
+            };
+            this.ui.cards.appendChild(card);
+        });
+        this.showToast('2차 전직 가능!', '⚡');
+    }
+    // ── 인피니티 모드 돌발 이벤트 ──────────────────────────────────────────────
+    triggerInfiniteAmbush() {
+        this.infiniteAmbushPending = true;
+        // 확률: 원거리 떼 50% / 엘리트 팩 35% / 스테이지1 보스 15%
+        const r = Math.random();
+        let eventType, subtitleText, toastMsg, toastIcon;
+        if (r < 0.15) {
+            eventType = 'boss';   subtitleText = 'STAGE-1 BOSS RETURNING'; toastMsg = 'AMBUSH: BOSS INCOMING';   toastIcon = '💀';
+        } else if (r < 0.50) {
+            eventType = 'elite';  subtitleText = 'ELITE SQUAD INCOMING';   toastMsg = 'AMBUSH: ELITE SQUAD';     toastIcon = '⚠️';
+        } else {
+            eventType = 'ranged'; subtitleText = 'RANGED SWARM INCOMING';  toastMsg = 'AMBUSH: RANGED SWARM';    toastIcon = '🎯';
+        }
+        this.audioManager.playWarningAlarm();
+        const warningEl = document.getElementById('boss-warning');
+        const subtitleEl = warningEl.querySelector('.text-xl');
+        const origText = subtitleEl.textContent;
+        subtitleEl.textContent = subtitleText;
+        warningEl.classList.remove('hidden');
+        setTimeout(() => {
+            warningEl.classList.add('hidden');
+            subtitleEl.textContent = origText;
+            this.infiniteAmbushPending = false;
+            this.showToast(toastMsg, toastIcon);
+            if (eventType === 'boss') {
+                const b = new Enemy(this.canvas.width / 2, 160, 'boss', this.player.level);
+                b.isAmbush = true;
+                this.enemies.push(b);
+                this.audioManager.startBossBGM();
+            } else if (eventType === 'elite') {
+                for (let i = 0; i < 6; i++) {
+                    const { x, y } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
+                    this.enemies.push(new Enemy(x, y, 'elite', this.player.level, this));
+                }
+            } else {
+                for (let i = 0; i < 10; i++) {
+                    const { x, y } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
+                    this.enemies.push(new Enemy(x, y, 'ranged', this.player.level, this));
+                }
+            }
+        }, 3000);
+    }
+    // ── 글리치 위버 패턴 ────────────────────────────────────────────────────────
+    triggerGemReverse(boss) {
+        if (this.gems.length === 0) return;
+        const positions = this.gems.map(g => ({ x: g.x, y: g.y }));
+        this.gems = [];
+        positions.forEach(pos => {
+            const delay = 25 + Math.floor(Math.random() * 20);
+            this.enemyProjectiles.push(new LaserTelegraph(pos.x, pos.y, this.player.x, this.player.y, delay, 25, 14));
+        });
+        for (let k = 0; k < 3; k++) this.skillManager.createParticles(boss.x, boss.y, '#0ff');
+        this.showToast('GEM REVERSE', '💎');
+    }
+    triggerGlitchCage() {
+        const W = CONFIG.CANVAS_WIDTH, H = CONFIG.CANVAS_HEIGHT;
+        [H * 0.25, H * 0.5, H * 0.75].forEach(y => {
+            this.enemyProjectiles.push(new LaserTelegraph(0, y, W, y, 70, 25, 22, 2200));
+        });
+        [W * 0.33, W * 0.67].forEach(x => {
+            this.enemyProjectiles.push(new LaserTelegraph(x, 0, x, H, 70, 25, 22, 1200));
+        });
+        this.showToast('GLITCH CAGE', '⛓️');
+    }
+    triggerGlitchMinionSpawn() {
+        const count = 8 + Math.floor(Math.random() * 5);
+        for (let i = 0; i < count; i++) {
+            const { x, y } = Utils.getSpawnPos(CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
+            this.enemies.push(new Enemy(x, y, 'normal', this.player.level, this));
+        }
+    }
+    triggerGlitchShift(boss) {
+        for (let k = 0; k < 5; k++) this.skillManager.createParticles(boss.x, boss.y, k % 2 === 0 ? '#0ff' : '#f0f');
+        const margin = 160;
+        boss.x = margin + Math.random() * (CONFIG.CANVAS_WIDTH  - margin * 2);
+        boss.y = margin + Math.random() * (CONFIG.CANVAS_HEIGHT - margin * 2);
+        for (let k = 0; k < 5; k++) this.skillManager.createParticles(boss.x, boss.y, k % 2 === 0 ? '#f0f' : '#0ff');
+    }
     triggerGameOver() { this.audioManager.stopBGM(); this.audioManager.playHit(); this.state = 'PLAYER_DYING'; this.player.deathTimer = 30; }
+    checkRecoveryTrigger() {
+        // 리커버리가 방금 발동됐고 아직 충격파를 생성하지 않은 경우에만 실행
+        if (this.player.has.recovery && this.player.recoveryUsed && !this.recoveryShockwaveUsed) {
+            this.recoveryShockwaveUsed = true;
+            this.recoveryShockwave = { x: this.player.x, y: this.player.y, radius: 0 };
+            // "Recovery!" 플로팅 텍스트 — 천천히 위로 떠오르며 사라지도록 큰 크기 지정
+            this.skillManager.floatingTexts.push({
+                x: this.player.x, y: this.player.y - 30,
+                text: 'Recovery!', life: 1.0, vy: -1.2,
+                isCrit: false, color: '#fff', fontSize: 28
+            });
+            this.updateHUD();
+            this.showToast('RECOVERY ACTIVATED', '💊');
+        }
+    }
     handleUIKeys(e) {
         if (e.key === 'Enter') { this.devToolsOpen = !this.devToolsOpen; this.devUI.classList.toggle('hidden', !this.devToolsOpen); if (this.devToolsOpen) this.updateDevInfo(); return; }
-        if (e.key === 'Escape') { if (this.state === 'PLAYING' || this.state === 'PAUSED_MENU') this.togglePause(); return; }
+        if (e.key === 'Escape') { if (this.state === 'PLAYING' || this.state === 'PAUSED_MENU' || this.state === 'PAUSED') this.togglePause(); return; }
         if (this.state !== 'PAUSED') return;
         if (['1', '2', '3'].includes(e.key)) { const cards = this.ui.cards.querySelectorAll('.skill-card'); if (cards[parseInt(e.key) - 1]) cards[parseInt(e.key) - 1].click(); }
     }
     togglePause() {
-        if (this.state === 'PLAYING') { this.state = 'PAUSED_MENU'; this.ui.pauseMenu.classList.remove('hidden'); this.updatePauseMenu(); }
-        else if (this.state === 'PAUSED_MENU') { this.state = 'PLAYING'; this.ui.pauseMenu.classList.add('hidden'); this.player.invincible = 30; }
+        if (this.state === 'PLAYING') {
+            this.prevState = null;
+            this.state = 'PAUSED_MENU'; this.ui.pauseMenu.classList.remove('hidden'); this.updatePauseMenu();
+        } else if (this.state === 'PAUSED') {
+            // 카드 선택 중 ESC → 카드 UI 유지하고 일시정지 메뉴 표시
+            this.prevState = 'PAUSED';
+            this.state = 'PAUSED_MENU'; this.ui.pauseMenu.classList.remove('hidden'); this.updatePauseMenu();
+        } else if (this.state === 'PAUSED_MENU') {
+            this.ui.pauseMenu.classList.add('hidden');
+            if (this.prevState === 'PAUSED') {
+                // 카드 선택으로 복귀
+                this.state = 'PAUSED'; this.prevState = null;
+            } else {
+                this.state = 'PLAYING'; this.player.invincible = 30;
+            }
+        }
     }
     updatePauseMenu() {
         const p = this.player, c = CONFIG.PLAYER;
@@ -550,23 +1109,23 @@ class Game {
         const diffRange = Math.round(p.attackRange - c.ATTACK_RANGE);
         const diffSpd = parseFloat((p.speed - c.SPEED).toFixed(1));
         const plus = (v) => v > 0 ? ` <span style="color:#4ade80">(+${v})</span>` : '';
-        document.getElementById('pause-stats').innerHTML = `<div>HP: ${p.hp}/${p.maxHp}${plus(diffHp)}</div><div>ATK: ${p.attackDamage}${plus(diffAtk)}</div><div>RANGE: ${p.attackRange.toFixed(0)}${plus(diffRange)}</div><div>SPD: ${p.speed.toFixed(1)}${plus(diffSpd)}</div><div>CRIT: ${(p.critChance*100).toFixed(0)}%${p.critChance > 0 ? plus((p.critChance*100).toFixed(0)) : ''}</div>`;
+        document.getElementById('pause-stats').innerHTML = `<div>HP: ${p.hp}/${p.maxHp}${plus(diffHp)}</div><div>ATK: ${p.attackDamage}${plus(diffAtk)}</div><div>RANGE: ${p.attackRange.toFixed(0)}${plus(diffRange)}</div><div>SPD: ${p.speed.toFixed(1)}${plus(diffSpd)}</div><div>CRIT: ${(p.critChance * 100).toFixed(0)}%${p.critChance > 0 ? plus((p.critChance * 100).toFixed(0)) : ''}</div>`;
         // Pause 메뉴 스킬 리스트 심플하게 재구성
         const skillsContainer = document.getElementById('pause-skills');
         skillsContainer.innerHTML = '';
         // 스크롤바 없이 획득 순서대로 나란히 배치 (Flex Wrap)
-        skillsContainer.className = "flex flex-wrap gap-4 overflow-visible w-full"; 
-        
+        skillsContainer.className = "flex flex-wrap gap-4 overflow-visible w-full";
+
         Array.from(this.ui.acquiredSkills.children).forEach(iconEl => {
             const count = iconEl.dataset.count || 1;
             const name = iconEl.dataset.name || 'Unknown Ability';
             const tooltipText = iconEl.dataset.tooltip ? iconEl.dataset.tooltip.replace(/<[^>]+>/g, '') : '';
-            const iconHTML = iconEl.innerHTML.split('<span')[0]; 
-            
+            const iconHTML = iconEl.innerHTML.split('<span')[0];
+
             const item = document.createElement('div');
             // 호버 시 스케일 업 및 커스텀 박스 툴팁 제공
             item.className = "group relative flex items-center justify-center bg-surface-container-highest p-4 rounded-xl border border-outline-variant/30 hover:bg-primary hover:scale-110 transition-all duration-300 cursor-help shadow-lg";
-            
+
             item.innerHTML = `
                 <div class="text-4xl group-hover:text-surface transition-colors">${iconHTML}</div>
                 <div class="absolute -top-2 -right-2 bg-tertiary text-on-tertiary font-headline font-bold text-[10px] px-2 py-1 rounded-full shadow-md group-hover:bg-white group-hover:text-primary transition-colors">
@@ -585,11 +1144,11 @@ class Game {
                     <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-surface-container-high border-r border-b border-primary/50 rotate-45"></div>
                 </div>
             `;
-            
-            item.classList.add('acquired-icon'); 
+
+            item.classList.add('acquired-icon');
             skillsContainer.appendChild(item);
         });
-        
+
         if (skillsContainer.children.length === 0) {
             skillsContainer.innerHTML = '<div class="w-full text-on-surface/40 font-body text-center py-10">No Abilities Acquired</div>';
         }
@@ -601,7 +1160,10 @@ class Game {
             countSpan.className = 'skill-count'; existing.dataset.count = (parseInt(existing.dataset.count) || 1) + 1;
             countSpan.innerText = `x${existing.dataset.count}`; existing.appendChild(countSpan);
         } else {
-            const el = document.createElement('div'); el.className = 'acquired-icon relative flex items-center justify-center'; el.dataset.id = skill.id;
+            const el = document.createElement('div');
+            const gradeColor = { bronze: '#cd7f32', silver: '#b0b8c8', gold: '#fbbf24', prism: '#a78bfa' }[skill.grade] || 'var(--neon-blue)';
+            el.className = 'acquired-icon relative flex items-center justify-center'; el.dataset.id = skill.id;
+            el.style.borderColor = gradeColor; el.style.boxShadow = `0 0 6px ${gradeColor}`;
             const cleanDesc = skill.desc.replace(/<[^>]+>/g, '');
             el.dataset.name = skill.name;
             el.dataset.tooltip = `${skill.name}: ${cleanDesc}`;
@@ -609,7 +1171,7 @@ class Game {
         }
     }
     updateDevInfo() { if (this.player) document.getElementById('dev-info').innerHTML = `Lv: ${this.player.level} | HP: ${this.player.hp}/${this.player.maxHp}<br>Enemies: ${this.enemies.length}`; }
-    
+
     async renderLeaderboard() {
         const listEl = document.getElementById('leaderboard-list');
         listEl.innerHTML = '<div class="text-center text-primary animate-pulse py-8">SYNCING DATA...</div>';
@@ -633,7 +1195,7 @@ class Game {
                         </div>
                         <div class="text-right">
                             <div class="text-primary font-bold">${entry.highScore} KILLS</div>
-                            <div class="text-[10px] text-on-surface/40">${Math.floor(entry.surviveTime/60)}m ${entry.surviveTime%60}s</div>
+                            <div class="text-[10px] text-on-surface/40">${Math.floor(entry.surviveTime / 60)}m ${entry.surviveTime % 60}s</div>
                         </div>
                     </div>
                 `;

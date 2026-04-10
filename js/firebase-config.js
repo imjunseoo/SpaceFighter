@@ -1,20 +1,5 @@
-/**
- * Firebase 초기화 및 유저 DB 관리
- * 
- * [설정 방법]
- * 1. https://console.firebase.google.com 에서 프로젝트를 생성합니다
- * 2. 웹 앱을 추가하고 아래 firebaseConfig 객체의 값을 교체합니다
- * 3. Authentication > Sign-in method 에서 Google 로그인을 활성화합니다
- * 4. Firestore Database를 생성합니다 (테스트 모드 권장)
- * 5. Authentication > Settings > 승인된 도메인에 'localhost'를 추가합니다
- */
-
 class FirebaseDB {
     constructor() {
-        // ===================================================
-        // ⚠ 아래 값을 Firebase Console에서 복사한 값으로 교체하세요!
-        // Firebase Console > 프로젝트 설정 > 일반 > 내 앱 > Firebase SDK snippet
-        // ===================================================
         this.firebaseConfig = {
             apiKey: "AIzaSyB3XS5nyMPXq7UnkV9Ila_gpdbGxkvDrFM",
             authDomain: "space-fighter-84942.firebaseapp.com",

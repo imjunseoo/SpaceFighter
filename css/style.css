@@ -135,6 +135,50 @@ button.start-btn:hover { background-color: #fff; color: #000; }
 }
 .acquired-icon:hover::after { opacity: 1; }
 
+/* ── Ability Card Grade Styles ─────────────────────────── */
+.skill-card.grade-bronze { border-color: #cd7f32; background: linear-gradient(135deg, #1e1e2f 80%, rgba(205,127,50,0.15)); }
+.skill-card.grade-bronze:hover { border-color: #e8a060; box-shadow: 0 0 18px rgba(205,127,50,0.45); }
+.skill-card.grade-bronze .skill-icon { border-color: #cd7f32; }
+.skill-card.grade-bronze .skill-title { color: #e8a060; }
+
+.skill-card.grade-silver { border-color: #b0b8c8; background: linear-gradient(135deg, #1e1e2f 80%, rgba(176,184,200,0.15)); }
+.skill-card.grade-silver:hover { border-color: #d0dae8; box-shadow: 0 0 18px rgba(176,184,200,0.45); }
+.skill-card.grade-silver .skill-icon { border-color: #b0b8c8; }
+.skill-card.grade-silver .skill-title { color: #d0dae8; }
+
+.skill-card.grade-gold { border-color: #fbbf24; background: linear-gradient(135deg, #1e1e2f 80%, rgba(251,191,36,0.15)); }
+.skill-card.grade-gold:hover { border-color: #fde68a; box-shadow: 0 0 18px rgba(251,191,36,0.55); }
+.skill-card.grade-gold .skill-icon { border-color: #fbbf24; }
+.skill-card.grade-gold .skill-title { color: #fde68a; }
+
+.skill-card.grade-prism { border-color: #a78bfa; background: linear-gradient(135deg, #1a1a30 80%, rgba(167,139,250,0.2)); animation: rainbow-glow 2s linear infinite; }
+.skill-card.grade-prism .skill-icon { border-color: #a78bfa; }
+.skill-card.grade-prism .skill-title { color: #e0d0ff; font-weight: 900; }
+
+.grade-badge {
+    position: absolute; top: -12px; left: 15px;
+    font-size: 0.7rem; font-weight: 900; padding: 3px 8px; border-radius: 4px;
+    letter-spacing: 1px; text-transform: uppercase;
+}
+.grade-badge.bronze { background: #cd7f32; color: #000; }
+.grade-badge.silver { background: #b0b8c8; color: #000; }
+.grade-badge.gold   { background: #fbbf24; color: #000; }
+.grade-badge.prism  { background: linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); color: #fff; text-shadow: 0 0 4px #000; background-size: 200%; animation: rainbow-shift 1.5s linear infinite; }
+
+@keyframes rainbow-glow {
+    0%   { box-shadow: 0 0 18px 4px #f00; }
+    16%  { box-shadow: 0 0 18px 4px #ff0; }
+    33%  { box-shadow: 0 0 18px 4px #0f0; }
+    50%  { box-shadow: 0 0 18px 4px #0ff; }
+    66%  { box-shadow: 0 0 18px 4px #00f; }
+    83%  { box-shadow: 0 0 18px 4px #f0f; }
+    100% { box-shadow: 0 0 18px 4px #f00; }
+}
+@keyframes rainbow-shift {
+    0%   { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+}
+
 /* Dev Tools */
 .dev-tools {
     position: absolute; top: 60px; left: 15px; z-index: 200;
@@ -163,4 +207,28 @@ button.start-btn:hover { background-color: #fff; color: #000; }
 }
 .boss-warning-flash {
     animation: warningFlash 0.5s ease-in-out infinite;
+}
+
+/* 2차 전직 카드창 특수 이펙트 */
+@keyframes advancement-panel-glow {
+    0%, 100% {
+        box-shadow: inset 0 0 60px rgba(167,139,250,0.15), 0 0 0 2px #a78bfa, 0 0 40px rgba(167,139,250,0.4);
+        background-color: rgba(10,4,24,0.96);
+    }
+    50% {
+        box-shadow: inset 0 0 120px rgba(240,0,255,0.2), 0 0 0 3px #f0f, 0 0 80px rgba(255,0,255,0.35);
+        background-color: rgba(18,4,32,0.98);
+    }
+}
+@keyframes advancement-title {
+    0%, 100% { text-shadow: 0 0 12px #f0f, 0 0 35px #f0f, 0 0 70px #a78bfa; color: #e0d0ff; letter-spacing: 8px; }
+    33%       { text-shadow: 0 0 10px #0ff, 0 0 28px #0ff, 0 0 55px #fff;    color: #0ff;    letter-spacing: 10px; }
+    66%       { text-shadow: 0 0 14px #f0f, 0 0 40px #f0f, 0 0 80px #a78bfa; color: #f9a8d4; letter-spacing: 7px; }
+}
+#levelup-ui.advancement-active {
+    animation: advancement-panel-glow 1.8s ease-in-out infinite;
+}
+#levelup-ui.advancement-active h2 {
+    animation: advancement-title 2s ease-in-out infinite;
+    font-size: 2rem;
 }
