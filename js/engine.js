@@ -573,19 +573,21 @@ class Game {
             });
         }
 
-        // 오버로드: Kai'Sa Q 스타일 - 6발 유도 미사일, 각 미사일이 다른 적 추적
+        // 오버로드: 융단 포격 - 45프레임마다 무작위 적 3~5명 동시 록온, 데미지 70~80%
         if (this.player.job === 'overload') {
             this.player.drones.forEach(d => {
                 if (!d.readyToFire) return;
-                const count = 6;
-                const nearby = this.enemies.filter(e => Utils.dist(d.x, d.y, e.x, e.y) < 600);
+                const count = Math.floor(Math.random() * 3) + 3; // 3~5발
+                const nearby = this.enemies.filter(e => Utils.dist(d.x, d.y, e.x, e.y) < 600)
+                    .sort(() => Math.random() - 0.5); // 무작위 순서
                 for (let k = 0; k < count; k++) {
-                    const tgt = nearby.length > 0
-                        ? nearby[k % nearby.length]
+                    const tgt = k < nearby.length
+                        ? nearby[k]
                         : { x: Math.random() * CONFIG.CANVAS_WIDTH, y: Math.random() * CONFIG.CANVAS_HEIGHT };
-                    this.missileQueue.push({ framesLeft: k * 3, drone: d, target: tgt, ratio: 1.0 });
+                    const ratio = 0.7 + Math.random() * 0.1; // 70~80%
+                    this.missileQueue.push({ framesLeft: k * 3, drone: d, target: tgt, ratio });
                 }
-                d.resetCooldown(120, this.player);
+                d.resetCooldown(45, this.player);
             });
         }
 
