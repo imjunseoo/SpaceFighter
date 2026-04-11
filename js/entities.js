@@ -104,10 +104,10 @@ class Player {
             ctx.beginPath();
             // 왕관 밑변
             ctx.moveTo(-cw, ch / 2);
-            ctx.lineTo( cw, ch / 2);
+            ctx.lineTo(cw, ch / 2);
             // 오른쪽 아래 → 오른쪽 위 뾰족
-            ctx.lineTo( cw, -ch / 2);
-            ctx.lineTo( cw * 0.5, ch * 0.1);
+            ctx.lineTo(cw, -ch / 2);
+            ctx.lineTo(cw * 0.5, ch * 0.1);
             // 중앙 뾰족 (가장 높음)
             ctx.lineTo(0, -ch);
             ctx.lineTo(-cw * 0.5, ch * 0.1);
@@ -184,19 +184,19 @@ class Player {
     applyUpgrade(skillId) {
         switch (skillId) {
             // ── Bronze ──────────────────────────────
-            case 'output_module':   this.attackDamage += 5; break;
-            case 'lens_expand':     this.attackRange *= 1.15; break;
-            case 'coolant_pump':    this.maxCooldown *= 0.9; break;
-            case 'endurance_up':    this.maxHp += 100; this.hp = Math.min(this.maxHp, this.hp + 100); break;
+            case 'output_module': this.attackDamage += 5; break;
+            case 'lens_expand': this.attackRange *= 1.15; break;
+            case 'coolant_pump': this.maxCooldown *= 0.9; break;
+            case 'endurance_up': this.maxHp += 100; this.hp = Math.min(this.maxHp, this.hp + 100); break;
 
             // ── Silver ──────────────────────────────
             case 'vampire_circuit': this.vampireChance += 0.05; break;
-            case 'surge_cathode':   this.surgeCathodeStacks++; break;  // 중첩당 크리 데미지 +10은 engine.js에서 처리
+            case 'surge_cathode': this.surgeCathodeStacks++; break;  // 중첩당 크리 데미지 +10은 engine.js에서 처리
 
             // ── Gold ────────────────────────────────
             case 'chain_lightning': this.chainLightningStacks++; break;
-            case 'crit_logic':      this.critChance += 0.1; break;
-            case 'crit_research':   this.critMultiplier += 0.05; break;
+            case 'crit_logic': this.critChance += 0.1; break;
+            case 'crit_research': this.critMultiplier += 0.05; break;
 
             // ── Prism ────────────────────────────────
             case 'binding_king':
@@ -211,9 +211,9 @@ class Player {
                 this.hp = Math.min(this.hp, this.maxHp);
                 break;
             }
-            case 'berserk':   this.has.berserk = true; break;
+            case 'berserk': this.has.berserk = true; break;
             case 'blackhole': this.has.blackhole = true; break;
-            case 'recovery':  this.has.recovery = true; break;
+            case 'recovery': this.has.recovery = true; break;
 
             // ── 1차 직업 ────────────────────────────
             case 'install_sword':
@@ -240,8 +240,7 @@ class Player {
                 break;
             case 'master_mecha':
                 this.job = 'overload';
-                for (let i = 0; i < 6; i++) this.drones.push(new Drone(0));
-                // 전체 드론을 균등 배분
+                // 드론 추가 없이 기존 드론이 융단 포격 모드로 전환
                 this.drones.forEach((d, i) => { d.orbitAngle = (Math.PI * 2 / this.drones.length) * i; });
                 break;
         }
@@ -257,12 +256,23 @@ class Drone {
         this.color = '#f7d774'; // 아이보리 골드
         this.damage = 5;
         this.x = 0; this.y = 0;
+        this.fireCooldown = 0; // 발사 쿨타임 (프레임)
+    }
+    // 발사 준비 여부
+    get readyToFire() { return this.fireCooldown <= 0; }
+    // player.maxCooldown 비율로 스케일된 쿨타임 설정
+    resetCooldown(baseInterval, player) {
+        this.fireCooldown = Math.max(8, Math.round(baseInterval * player.maxCooldown / CONFIG.PLAYER.MAX_COOLDOWN));
     }
     update(player) {
         this.orbitAngle += this.speed;
-        // 드론의 좌표를 플레이어의 현재 좌표 기준으로 즉시 갱신
         this.x = player.x + Math.cos(this.orbitAngle) * this.dist;
         this.y = player.y + Math.sin(this.orbitAngle) * this.dist;
+        if (this.fireCooldown > 0) {
+            this.fireCooldown--;
+            // 버서커: HP 30% 이하 시 추가 감소 (플레이어 공격속도와 동일)
+            if (player.has.berserk && player.hp <= player.maxHp * 0.3) this.fireCooldown--;
+        }
     }
     draw(ctx) {
         ctx.save();
@@ -298,7 +308,7 @@ class Drone {
 class Enemy {
     constructor(x, y, type, playerLevel, game) {
         this.x = x; this.y = y; this.type = type;
-        const infiniteBonus = game && game.infiniteModeActive ? 1 + Math.max(0, playerLevel - 30) * 0.08 : 1;
+        const infiniteBonus = game && game.infiniteModeActive ? 1 + Math.max(0, playerLevel - 30) * 0.04 : 1;
         this.speed = (Math.random() * 1 + 1.5 + (playerLevel * 0.08));
         this.maxHp = (10 + (playerLevel - 1) * 8) * infiniteBonus;
         this.radius = 10; this.color = '#f00'; this.knockbackResist = 1;
@@ -403,7 +413,7 @@ class Enemy {
                 for (let i = 0; i < spawnCount; i++) {
                     const sp = Utils.getSpawnPos(CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
                     const t = types[Math.floor(Math.random() * types.length)];
-                    game.enemies.push(new Enemy(sp.x, sp.y, t, player.level));
+                    game.enemies.push(new Enemy(sp.x, sp.y, t, player.level, game));
                 }
                 this.lastHpThreshold = currentThreshold;
             }
@@ -492,6 +502,88 @@ class Enemy {
     }
 }
 
+class DroneMissile {
+    // guided=true : 유도 미사일 (메카닉)
+    // guided=false: 직선 발사체 (오버로드, Kai'Sa Q 스타일)
+    constructor(x, y, target, damageRatio, guided = true, dirAngle = 0) {
+        this.x = x; this.y = y;
+        this.startX = x; this.startY = y;
+        this.target = target;
+        this.damageRatio = damageRatio;
+        this.guided = guided;
+        this.angle = guided ? Utils.angle(x, y, target.x, target.y) : dirAngle;
+        // 로그 곡선용: progress 0→1, 수직 진폭 (좌/우 랜덤)
+        this.progress = 0;
+        this.progressSpeed = 0.055; // ~18프레임(0.3초)에 도달
+        this.amplitude = (Math.random() > 0.5 ? 1 : -1) * (55 + Math.random() * 75);
+        this.travelDist = 0;
+        this.maxTravelDist = 580;
+        this.speed = 13; // 비유도 전용
+        this.radius = 5;
+        this.aoeRadius = 80;
+        this.color = '#f7d774';
+    }
+    update() {
+        if (this.guided) {
+            const prevX = this.x, prevY = this.y;
+            this.progress = Math.min(1, this.progress + this.progressSpeed);
+            const tx = this.target.x, ty = this.target.y;
+            const dx = tx - this.startX, dy = ty - this.startY;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            // 수직 단위벡터
+            const px = -dy / dist, py = dx / dist;
+            // 로그 오프셋: 초반에 급격히 꺾이고 타겟 도달 시 0으로 수렴
+            const offset = this.amplitude * Math.log(1 + this.progress * 10) * (1 - this.progress);
+            this.x = this.startX + dx * this.progress + px * offset;
+            this.y = this.startY + dy * this.progress + py * offset;
+            // 렌더링용 방향각 갱신
+            const fdx = this.x - prevX, fdy = this.y - prevY;
+            if (fdx !== 0 || fdy !== 0) this.angle = Math.atan2(fdy, fdx);
+        } else {
+            this.travelDist += this.speed;
+            this.x += Math.cos(this.angle) * this.speed;
+            this.y += Math.sin(this.angle) * this.speed;
+        }
+    }
+    hitCheck() {
+        if (this.guided) return this.progress >= 0.98;
+        return this.travelDist >= this.maxTravelDist;
+    }
+    // 비유도 전용: 비행 중 적 충돌 체크
+    collidesWithEnemy(enemies) {
+        if (this.guided) return false;
+        return enemies.some(e => Utils.dist(this.x, this.y, e.x, e.y) < e.radius + this.radius);
+    }
+    draw(ctx) {
+        ctx.save();
+        // 레이저 빔 몸통 — 비행 방향 반대로 꼬리 연장
+        const tailLen = 22;
+        const tx = this.x - Math.cos(this.angle) * tailLen;
+        const ty = this.y - Math.sin(this.angle) * tailLen;
+        // 외곽 글로우 (넓고 흐릿)
+        const grd = ctx.createLinearGradient(tx, ty, this.x, this.y);
+        grd.addColorStop(0, 'rgba(255,230,80,0)');
+        grd.addColorStop(1, 'rgba(255,230,80,0.9)');
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(this.x, this.y);
+        ctx.strokeStyle = grd;
+        ctx.lineWidth = 5;
+        ctx.shadowBlur = 14; ctx.shadowColor = '#ffe050';
+        ctx.stroke();
+        // 코어 라인 (밝고 얇음)
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(this.x, this.y);
+        ctx.strokeStyle = '#fff9c4';
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 6; ctx.shadowColor = '#fff';
+        ctx.stroke();
+        // 선두 광점
+        ctx.beginPath(); ctx.arc(this.x, this.y, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowBlur = 12; ctx.shadowColor = '#ffe050';
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
 class Gem {
     constructor(x, y, expValue = 1) {
         this.x = x; this.y = y; this.size = 6; this.expValue = expValue;
@@ -567,9 +659,9 @@ class GlitchWeaver {
         // 파편 공전
         this.fragmentAngle = 0; this.fragmentCount = 6;
         // 패턴 쿨타임
-        this.gemReverseCooldown  = 540;  // 9초 후 첫 발동
-        this.gemReverseWarning   = 0;    // 전조 타이머 (90프레임 카운트다운)
-        this.glitchCageCooldown  = 900;  // 15초 후 첫 발동
+        this.gemReverseCooldown = 540;  // 9초 후 첫 발동
+        this.gemReverseWarning = 0;    // 전조 타이머 (90프레임 카운트다운)
+        this.glitchCageCooldown = 900;  // 15초 후 첫 발동
         this.minionSpawnCooldown = 240;  // 4초 후 첫 발동
         // 글리치 쉬프트: HP 20% 소실마다 순간이동 (5 = 100%)
         this.lastHpThreshold = 5;
@@ -597,8 +689,8 @@ class GlitchWeaver {
             this.gemReverseWarning = 90;
             game.showToast('GEM REVERSE INCOMING', '⚠️');
         }
-        if (--this.glitchCageCooldown  <= 0) { this.glitchCageCooldown  = 1800; game.triggerGlitchCage(); }
-        if (--this.minionSpawnCooldown <= 0) { this.minionSpawnCooldown = 240;  game.triggerGlitchMinionSpawn(); }
+        if (--this.glitchCageCooldown <= 0) { this.glitchCageCooldown = 1800; game.triggerGlitchCage(); }
+        if (--this.minionSpawnCooldown <= 0) { this.minionSpawnCooldown = 240; game.triggerGlitchMinionSpawn(); }
 
         const threshold = Math.floor((this.hp / this.maxHp) * 5);
         if (threshold < this.lastHpThreshold) { this.lastHpThreshold = threshold; game.triggerGlitchShift(this); }
@@ -606,7 +698,7 @@ class GlitchWeaver {
 
     draw(ctx) {
         const coreR = this.radius * 0.42;
-        const orbR  = this.radius * 0.88;
+        const orbR = this.radius * 0.88;
 
         // 젬 리버스 전조: 바깥에서 코어로 수축하는 흡수 링 + 보스 진동
         let shakeX = 0, shakeY = 0;
@@ -635,9 +727,9 @@ class GlitchWeaver {
 
         // 색수차(Chromatic Aberration): R / C / 화이트 코어 3패스
         [
-            { dx: -4 + shakeX, dy: shakeY, c: 'rgba(255,50,50,0.55)',  sc: '#f55' },
-            { dx:  4 + shakeX, dy: shakeY, c: 'rgba(50,255,255,0.55)', sc: '#5ff' },
-            { dx:  0 + shakeX, dy: shakeY, c: 'rgba(210,210,255,0.9)', sc: '#ccf' }
+            { dx: -4 + shakeX, dy: shakeY, c: 'rgba(255,50,50,0.55)', sc: '#f55' },
+            { dx: 4 + shakeX, dy: shakeY, c: 'rgba(50,255,255,0.55)', sc: '#5ff' },
+            { dx: 0 + shakeX, dy: shakeY, c: 'rgba(210,210,255,0.9)', sc: '#ccf' }
         ].forEach(({ dx, dy, c, sc }) => {
             ctx.save(); ctx.translate(this.x + dx, this.y + dy);
             // 코어 링

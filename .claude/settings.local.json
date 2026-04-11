@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l \"c:/Users/imjun/OneDrive/Desktop/Space Fighter/js\"/*.js)"
+    ]
+  }
+}

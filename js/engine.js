@@ -295,7 +295,7 @@ class Game {
         this.boss2Warning = false; this.boss2Spawned = false; this.boss2Defeated = false;
         this.infiniteModeActive = false;
         this.shockwave = null; this.recoveryShockwave = null; this.recoveryShockwaveUsed = false;
-        this.bullets = []; this.advancementShown = false; this.advancementPending = false;
+        this.bullets = []; this.droneMissiles = []; this.missileQueue = []; this.advancementShown = false; this.advancementPending = false;
         this.infiniteAmbushTimer = 0; this.infiniteAmbushPending = false;
         this.updateHUD();
         this.ui.levelup.classList.add('hidden');
@@ -461,6 +461,7 @@ class Game {
         if (elapsed < this.fpsCap) return;
         this.lastFrameTime = timestamp - (elapsed % this.fpsCap);
         this.playedHitThisFrame = false;
+        this.playedExplosionThisFrame = false;
         const isPhase2 = this.bossDefeated;
         this.ctx.fillStyle = isPhase2 ? '#0a0412' : '#050510'; this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.strokeStyle = isPhase2 ? '#313' : '#112'; this.ctx.lineWidth = 1; this.ctx.beginPath();
@@ -556,118 +557,58 @@ class Game {
         if (this.frameCount % spawnInterval === 0) this.spawnEnemy();
         this.enemyProjectiles.forEach((p, i) => { p.update(this.player, this); p.draw(this.ctx); if (p.state === 'DONE') this.enemyProjectiles.splice(i, 1); });
 
-        // 드론 레이저 타겟팅 (메카닉/사이버: 가장 가까운 적에게 레이저)
-        if ((this.player.job === 'mecha' || this.player.job === 'cyber') && this.frameCount % 15 === 0) {
-            const baseDmg = this.player.attackDamage * 0.5; // 공격력의 50%
+        // 메카닉/사이버: 드론 유도 미사일 (cooldown 기반, maxCooldown 비율 스케일)
+        if (this.player.job === 'mecha' || this.player.job === 'cyber') {
             this.player.drones.forEach(d => {
-                let closest = null, closestDist = 300;
+                if (!d.readyToFire) return;
+                let closest = null, closestDist = 350;
                 this.enemies.forEach(e => {
                     const dd = Utils.dist(d.x, d.y, e.x, e.y);
                     if (dd < closestDist) { closestDist = dd; closest = e; }
                 });
                 if (closest) {
-                    d.target = closest;
-                    // 크리티컬 계산
-                    const isCrit = this.player.surgeCritActive || Math.random() < this.player.critChance;
-                    let droneDmg = baseDmg;
-                    if (isCrit) {
-                        droneDmg = baseDmg * this.player.critMultiplier + this.player.surgeCathodeStacks * 10;
-                        if (this.player.surgeCritActive) { this.player.surgeCritActive = false; this.player.surgeCritTimer = 0; }
-                    }
-                    droneDmg = Math.floor(droneDmg);
-                    closest.hp -= droneDmg;
-                    this.skillManager.createFloatingText(closest.x, closest.y - 10, droneDmg, isCrit, '#0ff');
-
-                    // 연쇄 번개
-                    if (isCrit && this.player.chainLightningStacks > 0) {
-                        const lightningDmg = 10 * this.player.chainLightningStacks;
-                        const targets = this.enemies.filter(t => t !== closest && t.hp > 0).sort((a, c) => Utils.dist(closest.x, closest.y, a.x, a.y) - Utils.dist(closest.x, closest.y, c.x, c.y)).slice(0, 3);
-                        targets.forEach(t => {
-                            t.hp -= lightningDmg;
-                            this.skillManager.createFloatingText(t.x, t.y - 10, Math.round(lightningDmg), false, '#ff0');
-                            this.skillManager.createParticles(t.x, t.y, '#ff0');
-                        });
-                    }
-                    // 특이점(블랙홀)
-                    if (this.player.has.blackhole && Math.random() < 0.01) {
-                        this.player.blackholes.push({ x: closest.x, y: closest.y, life: 180, maxLife: 180 });
-                    }
-
-                    if (closest.hp <= 0) {
-                        this.skillManager.createParticles(closest.x, closest.y, closest.color);
-                        if (closest.type === 'elite') this.items.push(new Magnet(closest.x, closest.y));
-                        const gv = closest.type === 'ranged' ? 3 : (closest.type === 'bomber' ? 5 : (closest.type === 'elite' ? 10 : 1));
-                        if (closest.type === 'elite') { for (let k = 0; k < 5; k++) this.gems.push(new Gem(closest.x + Math.random() * 30 - 15, closest.y + Math.random() * 30 - 15, gv)); }
-                        else if (closest.type === 'boss') {
-                            for (let k = 0; k < 30; k++) this.gems.push(new Gem(closest.x + Math.random() * 80 - 40, closest.y + Math.random() * 80 - 40, 5));
-                            for (let pk = 0; pk < 150; pk++) this.skillManager.createParticles(closest.x, closest.y, Math.random() > .5 ? '#fbc531' : (Math.random() > .5 ? '#f00' : '#fa0'));
-                            if (closest.isAmbush) {
-                                this.audioManager.startBGM();
-                                this.showToast('AMBUSH REPELLED', '🏆');
-                            } else {
-                                this.bossDefeated = true;
-                                if (this.audioManager.startBGM) this.audioManager.startBGM();
-                                this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
-                                this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
-                                if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
-                                this.advancementPending = true;
-                                setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
-                            }
-                        } else if (closest.type === 'glitch_weaver') {
-                            for (let k = 0; k < 60; k++) this.gems.push(new Gem(closest.x + Math.random() * 100 - 50, closest.y + Math.random() * 100 - 50, 5));
-                            this.boss2Defeated = true; this.infiniteModeActive = true;
-                            for (let pk = 0; pk < 200; pk++) this.skillManager.createParticles(closest.x, closest.y, Math.random() > .5 ? '#0ff' : (Math.random() > .5 ? '#f0f' : '#fff'));
-                            if (this.audioManager.startBGM) this.audioManager.startBGM();
-                            this.showToast('GLITCH WEAVER DEFEATED', '⚡');
-                            this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
-                        } else this.gems.push(new Gem(closest.x, closest.y, gv));
-                        const idx = this.enemies.indexOf(closest);
-                        if (idx !== -1) this.enemies.splice(idx, 1);
-                        this.score++;
-                        if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
-                            this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3);
-                            this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
-                        }
-                        this.updateHUD();
-                    }
-                } else { d.target = null; }
-            });
-        }
-        // 오버로드: 360도 방사형 관통 사격
-        if (this.player.job === 'overload' && this.frameCount % 20 === 0) {
-            const droneDmg = this.player.attackDamage;
-            this.player.drones.forEach(d => {
-                const fireAngle = Utils.angle(this.player.x, this.player.y, d.x, d.y);
-                this.bullets.push(new Bullet(d.x, d.y, fireAngle, droneDmg, '#f7d774', 14, 6, false, true));
-            });
-        }
-
-        // 드론 레이저 라인 렌더링
-        if (this.player.job === 'mecha' || this.player.job === 'cyber') {
-            this.player.drones.forEach(d => {
-                if (d.target && d.target.hp > 0) {
-                    this.ctx.save();
-                    // 외곽 글로우 레이어
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(d.x, d.y);
-                    this.ctx.lineTo(d.target.x, d.target.y);
-                    this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-                    this.ctx.lineWidth = 8;
-                    this.ctx.shadowBlur = 20;
-                    this.ctx.shadowColor = '#0ff';
-                    this.ctx.stroke();
-                    // 중심 밝은 코어
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(d.x, d.y);
-                    this.ctx.lineTo(d.target.x, d.target.y);
-                    this.ctx.strokeStyle = '#0ff';
-                    this.ctx.lineWidth = 2;
-                    this.ctx.shadowBlur = 10;
-                    this.ctx.shadowColor = '#fff';
-                    this.ctx.stroke();
-                    this.ctx.restore();
+                    this.missileQueue.push({ framesLeft: 0, drone: d, target: closest, ratio: 0.5 });
                 }
+                d.resetCooldown(150, this.player);
             });
+        }
+
+        // 오버로드: Kai'Sa Q 스타일 - 6발 유도 미사일, 각 미사일이 다른 적 추적
+        if (this.player.job === 'overload') {
+            this.player.drones.forEach(d => {
+                if (!d.readyToFire) return;
+                const count = 6;
+                const nearby = this.enemies.filter(e => Utils.dist(d.x, d.y, e.x, e.y) < 600);
+                for (let k = 0; k < count; k++) {
+                    const tgt = nearby.length > 0
+                        ? nearby[k % nearby.length]
+                        : { x: Math.random() * CONFIG.CANVAS_WIDTH, y: Math.random() * CONFIG.CANVAS_HEIGHT };
+                    this.missileQueue.push({ framesLeft: k * 3, drone: d, target: tgt, ratio: 1.0 });
+                }
+                d.resetCooldown(120, this.player);
+            });
+        }
+
+        // 발사 큐 처리 — 프레임마다 카운트다운, 0 되면 실제 발사
+        for (let i = this.missileQueue.length - 1; i >= 0; i--) {
+            const q = this.missileQueue[i];
+            if (--q.framesLeft <= 0) {
+                this.droneMissiles.push(new DroneMissile(q.drone.x, q.drone.y, q.target, q.ratio, true));
+                this.audioManager.playMissileLaunch();
+                this.missileQueue.splice(i, 1);
+            }
+        }
+
+        // 드론 미사일 업데이트 및 충돌 처리
+        for (let i = this.droneMissiles.length - 1; i >= 0; i--) {
+            const m = this.droneMissiles[i];
+            m.update(); m.draw(this.ctx);
+            if (m.x < -60 || m.x > this.canvas.width + 60 || m.y < -60 || m.y > this.canvas.height + 60) {
+                this.droneMissiles.splice(i, 1); continue;
+            }
+            // 비유도: 비행 중 적 충돌 체크
+            if (m.collidesWithEnemy(this.enemies)) { this.explodeMissile(m); this.droneMissiles.splice(i, 1); continue; }
+            if (m.hitCheck()) { this.explodeMissile(m); this.droneMissiles.splice(i, 1); }
         }
 
         // 보스 전조 충격파 렌더링 및 적 소탕
@@ -704,7 +645,7 @@ class Game {
             // 주변 적 파괴
             for (let i = this.enemies.length - 1; i >= 0; i--) {
                 if (Utils.dist(rs.x, rs.y, this.enemies[i].x, this.enemies[i].y) < rs.radius) {
-                    this.skillManager.createParticles(this.enemies[i].x, this.enemies[i].y, this.enemies[i].color);
+                    this.killEnemy(this.enemies[i]);
                     this.enemies.splice(i, 1);
                 }
             }
@@ -763,66 +704,9 @@ class Game {
                         }
                         if (isHit) {
                             if (atk.hitTargets.has(e)) continue;
-                            atk.hitTargets.add(e); if (!this.playedHitThisFrame) { this.audioManager.playHit(); this.playedHitThisFrame = true; }
-                            e.hp -= atk.damage; this.skillManager.createFloatingText(e.x, e.y - 15, Math.round(atk.damage), atk.isCrit);
-                            // 연쇄 번개: 크리티컬 적중 시 주변 3마리에게 번개
-                            if (atk.isCrit && this.player.chainLightningStacks > 0) {
-                                const lightningDmg = 10 * this.player.chainLightningStacks;
-                                const targets = this.enemies.filter(t => t !== e && t.hp > 0).sort((a, b) => Utils.dist(e.x, e.y, a.x, a.y) - Utils.dist(e.x, e.y, b.x, b.y)).slice(0, 3);
-                                targets.forEach(t => {
-                                    t.hp -= lightningDmg;
-                                    this.skillManager.createFloatingText(t.x, t.y - 10, Math.round(lightningDmg), false, '#ff0');
-                                    this.skillManager.createParticles(t.x, t.y, '#ff0');
-                                    // 번개 라인 그리기
-                                    this.ctx.save();
-                                    // 외곽 글로우
-                                    this.ctx.beginPath(); this.ctx.moveTo(e.x, e.y); this.ctx.lineTo(t.x, t.y);
-                                    this.ctx.strokeStyle = 'rgba(255,220,0,0.4)'; this.ctx.lineWidth = 8; this.ctx.shadowBlur = 25; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
-                                    // 코어
-                                    this.ctx.beginPath(); this.ctx.moveTo(e.x, e.y); this.ctx.lineTo(t.x, t.y);
-                                    this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 2; this.ctx.shadowBlur = 12; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
-                                    this.ctx.restore();
-                                });
-                            }
-                            // 특이점(블랙홀): 공격 시 1% 확률
-                            if (this.player.has.blackhole && Math.random() < 0.01) {
-                                this.player.blackholes.push({ x: atk.x, y: atk.y, life: 180, maxLife: 180 });
-                            }
+                            atk.hitTargets.add(e);
                             e.knockbackX = Math.cos(a) * (atk.isFullCircle ? 25 : 15); e.knockbackY = Math.sin(a) * (atk.isFullCircle ? 25 : 15);
-                            if (e.hp <= 0) {
-                                this.skillManager.createParticles(e.x, e.y, e.color);
-                                if (e.type === 'elite') this.items.push(new Magnet(e.x, e.y));
-                                let gv = (e.type === 'ranged') ? 3 : (e.type === 'bomber' ? 5 : (e.type === 'elite' ? 10 : 1));
-                                if (e.type === 'elite') for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gv));
-                                else if (e.type === 'boss') {
-                                    for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
-                                    for (let p = 0; p < 150; p++) this.skillManager.createParticles(e.x, e.y, Math.random() > 0.5 ? '#fbc531' : (Math.random() > 0.5 ? '#f00' : '#fa0'));
-                                    if (e.isAmbush) {
-                                        this.audioManager.startBGM();
-                                        this.showToast('AMBUSH REPELLED', '🏆');
-                                    } else {
-                                        this.bossDefeated = true;
-                                        if (this.audioManager.startBGM) this.audioManager.startBGM();
-                                        this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
-                                        this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
-                                        if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
-                                        this.advancementPending = true;
-                                        setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
-                                    }
-                                } else if (e.type === 'glitch_weaver') {
-                                    for (let k = 0; k < 60; k++) this.gems.push(new Gem(e.x + Math.random() * 100 - 50, e.y + Math.random() * 100 - 50, 5));
-                                    this.boss2Defeated = true; this.infiniteModeActive = true;
-                                    for (let p = 0; p < 200; p++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#0ff' : (Math.random() > .5 ? '#f0f' : '#fff'));
-                                    if (this.audioManager.startBGM) this.audioManager.startBGM();
-                                    this.showToast('GLITCH WEAVER DEFEATED', '⚡');
-                                    this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
-                                } else this.gems.push(new Gem(e.x, e.y, gv));
-                                this.enemies.splice(j, 1); this.score++;
-                                if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
-                                    this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3); this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
-                                }
-                                this.updateHUD();
-                            } else this.skillManager.createParticles(e.x, e.y, '#fff');
+                            if (this.processHit(e, atk.damage, atk.isCrit, '#fff')) this.enemies.splice(j, 1);
                         }
                     }
                 }
@@ -846,45 +730,7 @@ class Game {
         this.enemies.forEach((e, i) => {
             e.update(this.player, this);
             if (e.hp <= 0) {
-                // 안전망: 블랙홀/체인번개 등 간접 데미지로 보스가 죽은 경우에도 처치 트리거
-                if (e.type === 'boss' && !this.bossDefeated) {
-                    for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
-                    for (let pk = 0; pk < 150; pk++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#fbc531' : (Math.random() > .5 ? '#f00' : '#fa0'));
-                    if (e.isAmbush) {
-                        this.audioManager.startBGM();
-                        this.showToast('AMBUSH REPELLED', '🏆');
-                    } else {
-                        this.bossDefeated = true;
-                        if (this.audioManager.startBGM) this.audioManager.startBGM();
-                        this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
-                        this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
-                        if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
-                        this.advancementPending = true;
-                        setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
-                    }
-                }
-                // 안전망: 블랙홀 등으로 글리치 위버가 죽은 경우에도 boss2 처치 트리거
-                if (e.type === 'glitch_weaver' && !this.boss2Defeated) {
-                    this.boss2Defeated = true; this.infiniteModeActive = true;
-                    for (let k = 0; k < 60; k++) this.gems.push(new Gem(e.x + Math.random() * 100 - 50, e.y + Math.random() * 100 - 50, 5));
-                    if (this.audioManager.startBGM) this.audioManager.startBGM();
-                    this.showToast('GLITCH WEAVER DEFEATED', '⚡'); this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
-                }
-                // 안전망: 어빌리티 등 간접 데미지로 죽은 일반 적 젬 드랍
-                if (e.type !== 'boss' && e.type !== 'glitch_weaver') {
-                    const gv = e.type === 'ranged' ? 3 : (e.type === 'bomber' ? 5 : (e.type === 'elite' ? 10 : 1));
-                    this.skillManager.createParticles(e.x, e.y, e.color);
-                    if (e.type === 'elite') {
-                        this.items.push(new Magnet(e.x, e.y));
-                        for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gv));
-                    } else {
-                        this.gems.push(new Gem(e.x, e.y, gv));
-                    }
-                    this.score++;
-                    if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
-                        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3); this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
-                    }
-                }
+                this.killEnemy(e);
                 this.enemies.splice(i, 1); return;
             }
             e.draw(this.ctx, this.player.x, this.player.y);
@@ -902,81 +748,17 @@ class Game {
                 if (b.hitTargets.has(e)) continue;
                 if (Utils.dist(b.x, b.y, e.x, e.y) < e.radius + b.size) {
                     b.hitTargets.add(e);
-                    e.hp -= b.damage;
-                    this.skillManager.createFloatingText(e.x, e.y - 15, Math.round(b.damage), b.isCrit);
-                    this.skillManager.createParticles(e.x, e.y, b.color);
-                    if (!this.playedHitThisFrame) { this.audioManager.playHit(); this.playedHitThisFrame = true; }
-
-                    // 연쇄 번개: 크리티컬 적중 시
-                    if (b.isCrit && this.player.chainLightningStacks > 0) {
-                        const lightningDmg = 10 * this.player.chainLightningStacks;
-                        const targets = this.enemies.filter(t => t !== e && t.hp > 0).sort((a, c) => Utils.dist(e.x, e.y, a.x, a.y) - Utils.dist(e.x, e.y, c.x, c.y)).slice(0, 3);
-                        targets.forEach(t => {
-                            t.hp -= lightningDmg;
-                            this.skillManager.createFloatingText(t.x, t.y - 10, Math.round(lightningDmg), false, '#ff0');
-                            this.skillManager.createParticles(t.x, t.y, '#ff0');
-                            this.ctx.save();
-                            this.ctx.beginPath(); this.ctx.moveTo(e.x, e.y); this.ctx.lineTo(t.x, t.y);
-                            this.ctx.strokeStyle = 'rgba(255,220,0,0.4)'; this.ctx.lineWidth = 8; this.ctx.shadowBlur = 25; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
-                            this.ctx.beginPath(); this.ctx.moveTo(e.x, e.y); this.ctx.lineTo(t.x, t.y);
-                            this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 2; this.ctx.shadowBlur = 12; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
-                            this.ctx.restore();
-                        });
-                    }
-
-                    // 특이점(블랙홀): 공격 시 1% 확률
-                    if (this.player.has.blackhole && Math.random() < 0.01) {
-                        this.player.blackholes.push({ x: b.x, y: b.y, life: 180, maxLife: 180 });
-                    }
-
-                    // 데스페라도: 적중 지점에 원형 폭발 AOE
+                    // 데스페라도: 적중 지점에 원형 폭발 AOE (processHit 전에 좌표 캡처)
                     if (this.player.job === 'desperado') {
                         this.skillManager.attacks.push({
-                            x: e.x, y: e.y,
-                            radius: this.player.attackRange,
-                            angle: 0, life: 12, maxLife: 12,
-                            damage: b.damage * 0.6,
+                            x: e.x, y: e.y, radius: this.player.attackRange,
+                            angle: 0, life: 12, maxLife: 12, damage: b.damage * 0.6,
                             isCrit: b.isCrit, isFullCircle: true, isLinear: false,
                             combo: 0, hitTargets: new Set([e])
                         });
                         this.skillManager.createParticles(e.x, e.y, '#ff6600');
                     }
-
-                    if (e.hp <= 0) {
-                        this.skillManager.createParticles(e.x, e.y, e.color);
-                        if (e.type === 'elite') this.items.push(new Magnet(e.x, e.y));
-                        const gv = e.type === 'ranged' ? 3 : (e.type === 'bomber' ? 5 : (e.type === 'elite' ? 10 : 1));
-                        if (e.type === 'elite') { for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gv)); }
-                        else if (e.type === 'boss') {
-                            for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
-                            for (let pk = 0; pk < 150; pk++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#fbc531' : (Math.random() > .5 ? '#f00' : '#fa0'));
-                            if (e.isAmbush) {
-                                this.audioManager.startBGM();
-                                this.showToast('AMBUSH REPELLED', '🏆');
-                            } else {
-                                this.bossDefeated = true;
-                                if (this.audioManager.startBGM) this.audioManager.startBGM();
-                                this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
-                                this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
-                                if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
-                                this.advancementPending = true;
-                                setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
-                            }
-                        } else if (e.type === 'glitch_weaver') {
-                            for (let k = 0; k < 60; k++) this.gems.push(new Gem(e.x + Math.random() * 100 - 50, e.y + Math.random() * 100 - 50, 5));
-                            this.boss2Defeated = true; this.infiniteModeActive = true;
-                            for (let pk = 0; pk < 200; pk++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#0ff' : (Math.random() > .5 ? '#f0f' : '#fff'));
-                            if (this.audioManager.startBGM) this.audioManager.startBGM();
-                            this.showToast('GLITCH WEAVER DEFEATED', '⚡');
-                            this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
-                        } else this.gems.push(new Gem(e.x, e.y, gv));
-                        this.enemies.splice(j, 1); this.score++;
-                        if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
-                            this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3);
-                            this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
-                        }
-                        this.updateHUD();
-                    }
+                    if (this.processHit(e, b.damage, b.isCrit, b.color)) this.enemies.splice(j, 1);
                     if (!b.piercing) { b.isAlive = false; break; }
                 }
             }
@@ -994,6 +776,98 @@ class Game {
         }
 
         this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx);
+    }
+    explodeMissile(m) {
+        // 폭발 파티클
+        for (let k = 0; k < 5; k++) this.skillManager.createParticles(m.x, m.y, k % 2 === 0 ? '#f7d774' : '#f80');
+        if (!this.playedExplosionThisFrame) { this.audioManager.playMissileExplosion(); this.playedExplosionThisFrame = true; }
+        // 크리티컬 판정 (폭발 시점의 실시간 공격력 적용)
+        const isCrit = this.player.surgeCritActive || Math.random() < this.player.critChance;
+        let dmg = this.player.attackDamage * m.damageRatio;
+        if (isCrit) {
+            dmg = dmg * this.player.critMultiplier + (this.player.surgeCathodeStacks || 0) * 10;
+            if (this.player.surgeCritActive) { this.player.surgeCritActive = false; this.player.surgeCritTimer = 0; }
+        }
+        dmg = Math.floor(dmg);
+        // AoE 범위 내 적에게 일반공격과 동일한 processHit 적용
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+            const e = this.enemies[i];
+            if (Utils.dist(m.x, m.y, e.x, e.y) >= m.aoeRadius) continue;
+            if (this.processHit(e, dmg, isCrit, '#f7d774', false)) this.enemies.splice(i, 1);
+        }
+    }
+    killEnemy(e) {
+        const gv = e.type === 'ranged' ? 3 : (e.type === 'bomber' ? 5 : (e.type === 'elite' ? 10 : 1));
+        this.skillManager.createParticles(e.x, e.y, e.color);
+        if (e.type === 'elite') {
+            this.items.push(new Magnet(e.x, e.y));
+            for (let k = 0; k < 5; k++) this.gems.push(new Gem(e.x + Math.random() * 30 - 15, e.y + Math.random() * 30 - 15, gv));
+        } else if (e.type === 'boss') {
+            for (let k = 0; k < 30; k++) this.gems.push(new Gem(e.x + Math.random() * 80 - 40, e.y + Math.random() * 80 - 40, 5));
+            for (let pk = 0; pk < 150; pk++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#fbc531' : (Math.random() > .5 ? '#f00' : '#fa0'));
+            if (e.isAmbush) {
+                this.audioManager.startBGM();
+                this.showToast('AMBUSH REPELLED', '🏆');
+            } else if (!this.bossDefeated) {
+                this.bossDefeated = true;
+                if (this.audioManager.startBGM) this.audioManager.startBGM();
+                this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
+                this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
+                if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
+                this.advancementPending = true;
+                setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
+            }
+        } else if (e.type === 'glitch_weaver' && !this.boss2Defeated) {
+            this.boss2Defeated = true; this.infiniteModeActive = true;
+            for (let k = 0; k < 60; k++) this.gems.push(new Gem(e.x + Math.random() * 100 - 50, e.y + Math.random() * 100 - 50, 5));
+            for (let pk = 0; pk < 200; pk++) this.skillManager.createParticles(e.x, e.y, Math.random() > .5 ? '#0ff' : (Math.random() > .5 ? '#f0f' : '#fff'));
+            if (this.audioManager.startBGM) this.audioManager.startBGM();
+            this.showToast('GLITCH WEAVER DEFEATED', '⚡');
+            this.showToast('INFINITE MODE: ACTIVATED', '⚠️');
+        } else {
+            this.gems.push(new Gem(e.x, e.y, gv));
+        }
+        this.score++;
+        if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
+            this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3);
+            this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
+        }
+        this.updateHUD();
+    }
+    drawLightningLine(x1, y1, x2, y2) {
+        this.ctx.save();
+        this.ctx.beginPath(); this.ctx.moveTo(x1, y1); this.ctx.lineTo(x2, y2);
+        this.ctx.strokeStyle = 'rgba(255,220,0,0.4)'; this.ctx.lineWidth = 8; this.ctx.shadowBlur = 25; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
+        this.ctx.beginPath(); this.ctx.moveTo(x1, y1); this.ctx.lineTo(x2, y2);
+        this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 2; this.ctx.shadowBlur = 12; this.ctx.shadowColor = '#ff0'; this.ctx.stroke();
+        this.ctx.restore();
+    }
+    // 모든 공격 경로에서 공유하는 피격 처리 (HP 감소 + 어빌리티 발동 + 킬 처리)
+    // 반환값: true = 적 사망 (호출측에서 enemies 배열에서 제거 필요)
+    processHit(e, dmg, isCrit, color = '#0ff', particles = true) {
+        e.hp -= dmg;
+        this.skillManager.createFloatingText(e.x, e.y - 10, dmg, isCrit, color);
+        if (particles) this.skillManager.createParticles(e.x, e.y, color);
+        if (!this.playedHitThisFrame) { this.audioManager.playHit(); this.playedHitThisFrame = true; }
+        if (isCrit) this.applyChainLightning(e, true);
+        if (this.player.has.blackhole && Math.random() < 0.01) {
+            this.player.blackholes.push({ x: e.x, y: e.y, life: 180, maxLife: 180 });
+        }
+        if (e.hp <= 0) { this.killEnemy(e); return true; }
+        return false;
+    }
+    applyChainLightning(source, drawLine = false) {
+        if (this.player.chainLightningStacks <= 0) return;
+        const lightningDmg = 10 * this.player.chainLightningStacks;
+        const targets = this.enemies.filter(t => t !== source && t.hp > 0)
+            .sort((a, b) => Utils.dist(source.x, source.y, a.x, a.y) - Utils.dist(source.x, source.y, b.x, b.y))
+            .slice(0, 3);
+        targets.forEach(t => {
+            t.hp -= lightningDmg;
+            this.skillManager.createFloatingText(t.x, t.y - 10, Math.round(lightningDmg), false, '#ff0');
+            this.skillManager.createParticles(t.x, t.y, '#ff0');
+            if (drawLine) this.drawLightningLine(source.x, source.y, t.x, t.y);
+        });
     }
     showAdvancementMenu() {
         if (this.advancementShown) return;

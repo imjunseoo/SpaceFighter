@@ -292,4 +292,37 @@ class AudioManager {
         if (this.bossSubDrone) { try { this.bossSubDrone.stop(); } catch(e) {} this.bossSubDrone = null; }
         if (this.bossMelodyInterval) { clearInterval(this.bossMelodyInterval); this.bossMelodyInterval = null; }
     }
+
+    // 11. 드론 미사일 발사음
+    playMissileLaunch() {
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        const now = this.ctx.currentTime;
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.exponentialRampToValueAtTime(1800, now + 0.04);
+        osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+        gain.gain.setValueAtTime(0.03, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+    }
+
+    // 12. 드론 미사일 폭발음
+    playMissileExplosion() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(40, now + 0.22);
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.start(now); osc.stop(now + 0.22);
+    }
 }
