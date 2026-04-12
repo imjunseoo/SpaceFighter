@@ -62,13 +62,23 @@ class SkillManager {
             }
 
             const alpha = atk.life / atk.maxLife;
-            const strokeColor = atk.isFullCircle
-                ? `rgba(255, 0, 255, ${alpha})`
-                : `rgba(0, 255, 255, ${alpha})`;
-            ctx.lineWidth = 15 * alpha;
-            ctx.strokeStyle = strokeColor;
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = atk.isFullCircle ? '#f0f' : '#0ff';
+            let baseColor, shadowCol;
+            if (atk.color) {
+                // 커스텀 색상 (hex → rgb 파싱 없이 shadowColor만 사용)
+                baseColor = atk.color;
+                shadowCol = atk.color;
+                ctx.lineWidth = 15 * alpha;
+                ctx.strokeStyle = atk.color.startsWith('rgba') ? atk.color : `rgba(255,30,30,${alpha})`;
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = shadowCol;
+            } else {
+                baseColor = atk.isFullCircle ? `rgba(255, 0, 255, ${alpha})` : `rgba(0, 255, 255, ${alpha})`;
+                shadowCol = atk.isFullCircle ? '#f0f' : '#0ff';
+                ctx.lineWidth = 15 * alpha;
+                ctx.strokeStyle = baseColor;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = shadowCol;
+            }
             ctx.stroke();
             ctx.shadowBlur = 0;
         });
@@ -114,6 +124,10 @@ class Game {
                     this.ui.mainOverlay.classList.add('hidden');
                     this.ui.gameUILayer.classList.remove('hidden');
                     this.canvas.classList.remove('hidden');
+                    // Miku 숨기기 및 로밍 정지
+                    if (this.mikuEl) this.mikuEl.style.display = 'none';
+                    if (this.mikuRoamTimer) { clearTimeout(this.mikuRoamTimer); this.mikuRoamTimer = null; }
+                    if (this.mikuBubble) this.mikuBubble.classList.remove('bubble-visible');
                     this.audioManager.init();
                     this.init();
                     if (!this.loopStarted) {
@@ -142,6 +156,7 @@ class Game {
             }
         };
         window.addEventListener('keydown', (e) => this.handleUIKeys(e));
+        this.initMiku();
         this.devToolsOpen = false;
         this.devUI = document.getElementById('dev-tools');
         document.getElementById('dev-lvup').onclick = () => { if (this.player) { this.player.level++; this.player.exp = 0; this.showLevelUpMenu(); this.updateDevInfo(); } };
@@ -163,6 +178,22 @@ class Game {
             const def = ARTIFACT_POOL.find(a => a.id === 'excalibur');
             if (!def) return;
             this.player.weaponArtifact = { defId: 'excalibur', category: 'weapon', stacks: 15, cooldown: 0 };
+            const idx = this.player.artifacts.findIndex(a => a.category === 'weapon');
+            if (idx >= 0) this.player.artifacts[idx] = this.player.weaponArtifact;
+            else this.player.artifacts.push(this.player.weaponArtifact);
+            this.updateHUD(); this.updateArtifactTray(); this.updateDevInfo();
+        };
+        document.getElementById('dev-domination').onclick = () => {
+            if (!this.player) return;
+            this.player.weaponArtifact = { defId: 'domination_whip', category: 'weapon', stacks: 10, cooldown: 0 };
+            const idx = this.player.artifacts.findIndex(a => a.category === 'weapon');
+            if (idx >= 0) this.player.artifacts[idx] = this.player.weaponArtifact;
+            else this.player.artifacts.push(this.player.weaponArtifact);
+            this.updateHUD(); this.updateArtifactTray(); this.updateDevInfo();
+        };
+        document.getElementById('dev-extinction').onclick = () => {
+            if (!this.player) return;
+            this.player.weaponArtifact = { defId: 'extinction_whip', category: 'weapon', stacks: 10, cooldown: 0 };
             const idx = this.player.artifacts.findIndex(a => a.category === 'weapon');
             if (idx >= 0) this.player.artifacts[idx] = this.player.weaponArtifact;
             else this.player.artifacts.push(this.player.weaponArtifact);
@@ -341,7 +372,7 @@ class Game {
         this.infiniteModeActive = false; this.infiniteElapsedMinutes = 0;
         this.shockwave = null; this.recoveryShockwave = null; this.recoveryShockwaveUsed = false;
         this.bullets = []; this.droneMissiles = []; this.missileQueue = [];
-        this.pendingEvents = []; this.screenShake = null; this.chargeEffect = null;
+        this.pendingEvents = []; this.screenShake = null; this.chargeEffect = null; this.xcaliburCharge = null; this.xBursts = [];
         this.infiniteAmbushTimer = 0; this.infiniteAmbushPending = false;
         this.updateHUD();
         this.ui.levelup.classList.add('hidden');
@@ -409,7 +440,9 @@ class Game {
         if (type === 'ranged' && this.enemies.filter(e => e.type === 'ranged').length >= 5) type = 'normal';
 
         if (this.infiniteModeActive) {
-            const spawnCount = Math.floor(Math.random() * 3) + 4; // 4~6마리
+            // 시간 비례 복리 증가: 기본 4~6 + 1분마다 +2씩 누적
+            const timeBonus = Math.floor(this.infiniteElapsedMinutes * 2);
+            const spawnCount = Math.floor(Math.random() * 3) + 4 + timeBonus;
             for (let i = 0; i < spawnCount; i++) {
                 const { x: sx, y: sy } = Utils.getSpawnPos(this.canvas.width, this.canvas.height);
                 this.enemies.push(new Enemy(sx, sy, type, lv, this));
@@ -625,6 +658,8 @@ class Game {
                 this.state = 'GAMEOVER'; this.skillManager.createShatterParticles(this.player.x, this.player.y, this.player.neonColor); this.audioManager.playHit();
                 setTimeout(() => {
                     this.ui.mainOverlay.classList.remove('hidden'); this.ui.gameUILayer.classList.add('hidden'); this.canvas.classList.add('hidden');
+                    // Miku 다시 표시 및 로밍 재개
+                    if (this.mikuEl) { this.mikuEl.style.display = ''; this._mikuScheduleRoam(); }
                     const title = this.ui.mainOverlay.querySelector('h1'), desc = this.ui.mainOverlay.querySelector('p');
                     if (title) title.innerText = "SYSTEM FAILED"; if (desc) desc.innerHTML = `LV: ${this.player.level} / 생존 시간: ${this.ui.timer.innerText} / 킬수: ${this.score}`;
                     this.ui.startBtn.innerText = "REBOOT SYSTEM";
@@ -657,32 +692,63 @@ class Game {
         this.player.update(this.input);
 
         // Z키: 무기 아티팩트 기반 공격
-        if (this.input.keys.z && this.player.cooldown <= 0 && this.player.weaponArtifact) {
+        if (this.player.weaponArtifact) {
             const weapDef = ARTIFACT_POOL.find(a => a.id === this.player.weaponArtifact.defId);
             if (weapDef) {
                 const atk = weapDef.attack;
-                const multishot = 0;
-                if (atk.type === 'melee_arc') {
-                    this.triggerArtifactMeleeArc(atk, multishot);
-                } else if (atk.type === 'full_circle') {
-                    this.triggerArtifactFullCircle(atk);
-                } else if (atk.type === 'bullet') {
-                    this.triggerArtifactBullet(atk, multishot);
-                } else if (atk.type === 'x_shape') {
-                    this.triggerXShape(atk);
-                } else if (atk.type === 'x_linger_explode') {
-                    this.triggerXLingerExplode(atk);
-                } else if (atk.type === 'cross_combo') {
-                    this.triggerCrossCombo(atk);
-                } else if (atk.type === 'cross_ultimate') {
-                    this.triggerCrossUltimate(atk);
-                } else if (atk.type === 'bullet_burst') {
-                    this.triggerBulletBurst(atk, multishot);
-                } else if (atk.type === 'piercing_laser') {
-                    this.triggerPiercingLaser(atk);
+                if (atk.type === 'cross_ultimate') {
+                    // 엑스칼리버: 꾹 누르기 차징 메커니즘
+                    if (this.input.keys.z) {
+                        if (!this.xcaliburCharge && this.player.cooldown <= 0) {
+                            const berserkActive = this.player.has.berserk && this.player.hp <= this.player.maxHp * 0.3;
+                            const maxFrames = Math.round(atk.cooldown * 2.5 * (berserkActive ? 0.5 : 1));
+                            this.xcaliburCharge = { frames: 0, maxFrames };
+                            this.chargeEffect = { frames: 0, maxFrames, converging: true };
+                            this.audioManager.playChargeStart();
+                        }
+                        if (this.xcaliburCharge) {
+                            this.xcaliburCharge.frames++;
+                            if (this.xcaliburCharge.frames >= this.xcaliburCharge.maxFrames) {
+                                this.triggerCrossUltimate(atk);
+                                this.xcaliburCharge = null;
+                                this.chargeEffect = null;
+                                this.player.cooldown = atk.cooldown;
+                                this.audioManager.playChargeRelease();
+                            }
+                        }
+                    } else {
+                        // Z 키 뗌 → 차징 취소
+                        if (this.xcaliburCharge) {
+                            this.xcaliburCharge = null;
+                            this.chargeEffect = null;
+                        }
+                    }
+                } else if (this.input.keys.z && this.player.cooldown <= 0) {
+                    const multishot = 0;
+                    if (atk.type === 'melee_arc') {
+                        this.triggerArtifactMeleeArc(atk, multishot);
+                    } else if (atk.type === 'full_circle') {
+                        this.triggerArtifactFullCircle(atk);
+                    } else if (atk.type === 'bullet') {
+                        this.triggerArtifactBullet(atk, multishot);
+                    } else if (atk.type === 'x_shape') {
+                        this.triggerXShape(atk);
+                        this.audioManager.playDominionStrike();
+                    } else if (atk.type === 'x_linger_explode') {
+                        this.triggerXLingerExplode(atk);
+                        this.audioManager.playAnnihilationStrike();
+                    } else if (atk.type === 'cross_combo') {
+                        this.triggerCrossCombo(atk);
+                    } else if (atk.type === 'bullet_burst') {
+                        this.triggerBulletBurst(atk, multishot);
+                    } else if (atk.type === 'piercing_laser') {
+                        this.triggerPiercingLaser(atk);
+                    }
+                    if (atk.type !== 'x_shape' && atk.type !== 'x_linger_explode') {
+                        this.audioManager.playSwordSlash();
+                    }
+                    this.player.cooldown = atk.cooldown;
                 }
-                this.player.cooldown = atk.cooldown;
-                this.audioManager.playSwordSlash();
             }
         }
         // 무한 모드 경과 시간 추적 (매 60초마다 증가)
@@ -691,7 +757,7 @@ class Game {
             if (this.infiniteElapsedMinutes % 5 === 0) this.showToast(`THREAT LEVEL ${this.infiniteElapsedMinutes}`, '⚠️');
         }
         const baseInterval = Math.max(25, 60 - (this.player.level * 2));
-        const infiniteInterval = Math.max(8, 20 - Math.floor(this.infiniteElapsedMinutes * 1.5));
+        const infiniteInterval = Math.max(5, 20 - Math.floor(this.infiniteElapsedMinutes * 2));
         const spawnInterval = this.infiniteModeActive ? infiniteInterval
                             : this.bossDefeated ? Math.max(12, Math.floor(baseInterval / 2))
                             : baseInterval;
@@ -951,29 +1017,81 @@ class Game {
         }
 
         this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx);
+        // 소멸(T4) X 폭발 이펙트
+        for (let i = this.xBursts.length - 1; i >= 0; i--) {
+            const b = this.xBursts[i];
+            if (--b.life <= 0) { this.xBursts.splice(i, 1); continue; }
+            const t = 1 - b.life / b.maxLife; // 0→1
+            const alpha = b.life / b.maxLife;
+            const ctx = this.ctx;
+            ctx.save();
+            // 확장하는 충격파 링
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.radius * t * 1.1, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(255,30,30,${alpha * 0.7})`;
+            ctx.lineWidth = 6 * alpha;
+            ctx.shadowBlur = 25; ctx.shadowColor = '#f00';
+            ctx.stroke();
+            // 두 번째 링 (살짝 느리게)
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.radius * t * 0.75, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(255,100,0,${alpha * 0.5})`;
+            ctx.lineWidth = 3 * alpha;
+            ctx.shadowBlur = 18; ctx.shadowColor = '#f50';
+            ctx.stroke();
+            // X자 빔 4개 (확장)
+            const beamLen = b.radius * (0.3 + t * 0.9);
+            ctx.lineWidth = (8 - t * 6) * alpha;
+            ctx.shadowBlur = 30; ctx.shadowColor = '#f00';
+            for (let k = 0; k < 4; k++) {
+                const a = b.angle + (k * Math.PI / 2) + Math.PI / 4;
+                ctx.beginPath();
+                ctx.moveTo(b.x, b.y);
+                ctx.lineTo(b.x + Math.cos(a) * beamLen, b.y + Math.sin(a) * beamLen);
+                ctx.strokeStyle = `rgba(255,${Math.floor(50 + (1-t)*150)},0,${alpha * 0.9})`;
+                ctx.stroke();
+            }
+            // 중심 플래시 (초반에만)
+            if (t < 0.35) {
+                const flashA = (0.35 - t) / 0.35;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 18 + t * 40, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255,80,0,${flashA * 0.6})`;
+                ctx.shadowBlur = 50; ctx.shadowColor = '#f00';
+                ctx.fill();
+            }
+            ctx.restore();
+        }
         // 엑스칼리버 차징 이펙트
-        if (this.chargeEffect) {
-            this.chargeEffect.frames++;
-            const progress = Math.min(1, this.chargeEffect.frames / this.chargeEffect.maxFrames);
+        if (this.chargeEffect && this.xcaliburCharge) {
+            const progress = Math.min(1, this.xcaliburCharge.frames / this.xcaliburCharge.maxFrames);
             const pulse = 0.5 + 0.5 * Math.sin(progress * Math.PI * 14);
             const ctx = this.ctx;
             ctx.save();
-            // 확장하는 링 3겹
+            // 수렴형 링 3겹 (바깥→안으로 좁혀짐)
             for (let r = 0; r < 3; r++) {
-                const rp = (progress + r / 3) % 1;
+                const rp = 1 - (progress + r / 3) % 1; // 반전: 큰 → 작은
+                const radius = 22 + rp * 140;
                 ctx.beginPath();
-                ctx.arc(this.player.x, this.player.y, 22 + rp * 130, 0, Math.PI * 2);
-                ctx.strokeStyle = `rgba(255,255,200,${(1 - rp) * 0.7 * pulse})`;
-                ctx.lineWidth = 2 + rp * 5;
-                ctx.shadowBlur = 20; ctx.shadowColor = '#fffaaa';
+                ctx.arc(this.player.x, this.player.y, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255,255,200,${rp * 0.75 * pulse})`;
+                ctx.lineWidth = 2 + (1 - rp) * 5;
+                ctx.shadowBlur = 22; ctx.shadowColor = '#fffaaa';
                 ctx.stroke();
             }
-            // 중심 글로우
+            // 중심 글로우 (차징 완료에 가까울수록 밝아짐)
             ctx.beginPath();
             ctx.arc(this.player.x, this.player.y, 14 + progress * 28, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255,255,255,${progress * 0.35 * pulse})`;
+            ctx.fillStyle = `rgba(255,255,255,${progress * 0.40 * pulse})`;
             ctx.shadowBlur = 40; ctx.shadowColor = '#fff';
             ctx.fill();
+            // 게이지 바 (플레이어 위 작은 막대)
+            const barW = 60, barH = 5;
+            const bx = this.player.x - barW / 2, by = this.player.y - 36;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(bx, by, barW, barH);
+            ctx.fillStyle = `rgba(255,255,${Math.floor(progress * 255)},0.9)`;
+            ctx.fillRect(bx, by, barW * progress, barH);
             ctx.restore();
         }
     }
@@ -1131,40 +1249,59 @@ class Game {
         const stacks = p.weaponArtifact?.stacks || 1;
         const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
         const range = atk.range + p.attackRange - CONFIG.PLAYER.ATTACK_RANGE;
+        // 사거리 내 가장 가까운 적 타겟, 없으면 플레이어 위치
+        let tx = p.x, ty = p.y;
+        let closestDist = range, closest = null;
+        this.enemies.forEach(e => {
+            const d = Utils.dist(p.x, p.y, e.x, e.y);
+            if (d < closestDist) { closestDist = d; closest = e; }
+        });
+        if (closest) { tx = closest.x; ty = closest.y; }
         const baseAngle = Math.atan2(p.dirY, p.dirX);
-        for (let i = 0; i < 2; i++) {
-            const angle = baseAngle + (i === 0 ? Math.PI / 4 : -Math.PI / 4);
-            const isCrit = Math.random() < p.critChance;
-            const finalDmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
-            this.skillManager.attacks.push({ x: p.x, y: p.y, radius: range, angle, life: 14, maxLife: 14, damage: finalDmg, isCrit, isFullCircle: false, isLinear: true, hitTargets: new Set() });
-            if (isCrit) this.applyChainLightning({ x: p.x, y: p.y });
-        }
+        const isCrit = Math.random() < p.critChance;
+        const finalDmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
+        // 두 획 동시 생성 (X자)
+        this.skillManager.attacks.push({ x: tx, y: ty, radius: range, angle: baseAngle + Math.PI / 4, life: 14, maxLife: 14, damage: finalDmg, isCrit, isFullCircle: false, isLinear: true, hitTargets: new Set() });
+        this.skillManager.attacks.push({ x: tx, y: ty, radius: range, angle: baseAngle - Math.PI / 4, life: 14, maxLife: 14, damage: finalDmg, isCrit, isFullCircle: false, isLinear: true, hitTargets: new Set() });
+        if (isCrit) this.applyChainLightning({ x: tx, y: ty });
     }
     triggerXLingerExplode(atk) {
         const p = this.player;
         const stacks = p.weaponArtifact?.stacks || 1;
         const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
         const range = atk.range + p.attackRange - CONFIG.PLAYER.ATTACK_RANGE;
+        // 사거리 내 가장 가까운 적 타겟, 없으면 플레이어 위치
+        let tx = p.x, ty = p.y;
+        let closestDist = range, closest = null;
+        this.enemies.forEach(e => {
+            const d = Utils.dist(p.x, p.y, e.x, e.y);
+            if (d < closestDist) { closestDist = d; closest = e; }
+        });
+        if (closest) { tx = closest.x; ty = closest.y; }
         const baseAngle = Math.atan2(p.dirY, p.dirX);
-        const px = p.x, py = p.y;
-        for (let i = 0; i < 2; i++) {
-            const angle = baseAngle + (i === 0 ? Math.PI / 4 : -Math.PI / 4);
-            const isCrit = Math.random() < p.critChance;
-            const finalDmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
-            this.skillManager.attacks.push({ x: px, y: py, radius: range, angle, life: 30, maxLife: 30, damage: finalDmg, isCrit, isFullCircle: false, isLinear: true, hitTargets: new Set() });
-        }
+        const isCrit = Math.random() < p.critChance;
+        const finalDmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
+        // 두 획 동시 생성 (X자, 빨간색)
+        this.skillManager.attacks.push({ x: tx, y: ty, radius: range, angle: baseAngle + Math.PI / 4, life: 30, maxLife: 30, damage: finalDmg, isCrit, isFullCircle: false, isLinear: true, color: '#f00', hitTargets: new Set() });
+        this.skillManager.attacks.push({ x: tx, y: ty, radius: range, angle: baseAngle - Math.PI / 4, life: 30, maxLife: 30, damage: finalDmg, isCrit, isFullCircle: false, isLinear: true, color: '#f00', hitTargets: new Set() });
         const expRatio = atk.explosionRatio || 5.0;
         const expRadius = atk.explosionRadius || 220;
         this.pendingEvents.push({ timer: 30, fn: () => {
-            const isCrit = Math.random() < p.critChance;
-            const expDmg = Math.floor(p.attackDamage * expRatio * (isCrit ? p.critMultiplier : 1));
+            const isCrit2 = Math.random() < p.critChance;
+            const expDmg = Math.floor(p.attackDamage * expRatio * (isCrit2 ? p.critMultiplier : 1));
             for (let j = this.enemies.length - 1; j >= 0; j--) {
-                if (Utils.dist(px, py, this.enemies[j].x, this.enemies[j].y) < expRadius)
-                    if (this.processHit(this.enemies[j], expDmg, isCrit, '#f80')) this.enemies.splice(j, 1);
+                if (Utils.dist(tx, ty, this.enemies[j].x, this.enemies[j].y) < expRadius)
+                    if (this.processHit(this.enemies[j], expDmg, isCrit2, '#f00')) this.enemies.splice(j, 1);
             }
-            for (let k = 0; k < 10; k++) this.skillManager.createParticles(px + (Math.random()-0.5)*expRadius, py + (Math.random()-0.5)*expRadius, k%2===0?'#f80':'#ff0');
-            this.audioManager.playMissileExplosion();
-            this.screenShake = { duration: 20, intensity: 8 };
+            // X 폭발 이펙트 (빨간색)
+            this.xBursts.push({ x: tx, y: ty, angle: baseAngle, life: 30, maxLife: 30, radius: expRadius });
+            // 방사형 빨간 파티클 (8방향)
+            for (let k = 0; k < 16; k++) {
+                const a = (k / 16) * Math.PI * 2;
+                const spd = 4 + Math.random() * 6;
+                this.skillManager.particles.push({ x: tx, y: ty, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, life: 1.0, decay: 0.03 + Math.random() * 0.02, color: k % 3 === 0 ? '#fff' : (k % 2 === 0 ? '#ff4444' : '#ff0000'), size: 2 + Math.random() * 4 });
+            }
+            this.audioManager.playAnnihilationExplosion();
         }});
     }
     triggerCrossCombo(atk) {
@@ -1190,20 +1327,19 @@ class Game {
         }});
     }
     triggerCrossUltimate(atk) {
+        // 차징 완료 시 호출: 1·2·3타 연속 Ultimate Combo 발동
         const p = this.player;
         const stacks = p.weaponArtifact?.stacks || 1;
         const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
         const slashRatio = atk.slashRatio || 6.0;
         const range = atk.range + p.attackRange - CONFIG.PLAYER.ATTACK_RANGE;
         const px = p.x, py = p.y;
-        // 차징 시간: 무기 쿨타임 × 2.5, 버서커 활성 시 절반
-        const berserkActive = p.has.berserk && p.hp <= p.maxHp * 0.3;
-        const chargeFrames = Math.round(atk.cooldown * 2.5 * (berserkActive ? 0.5 : 1));
         // 1타: 전체 범위 원형
         const isCrit1 = Math.random() < p.critChance;
         const dmg1 = Math.floor(p.attackDamage * effectiveRatio * (isCrit1 ? p.critMultiplier : 1));
         this.skillManager.attacks.push({ x: px, y: py, radius: range, angle: 0, life: 14, maxLife: 14, damage: dmg1, isCrit: isCrit1, isFullCircle: true, isLinear: false, hitTargets: new Set() });
-        // 2타: 십자가 + 차징 시작
+        if (isCrit1) this.applyChainLightning({ x: px, y: py });
+        // 2타: 대형 십자가 (10프레임 후)
         const crossRadius = CONFIG.CANVAS_HEIGHT * 0.9;
         this.pendingEvents.push({ timer: 10, fn: () => {
             this.audioManager.playCrossSlash();
@@ -1211,23 +1347,19 @@ class Game {
             const dmg2 = Math.floor(p.attackDamage * effectiveRatio * (isCrit2 ? p.critMultiplier : 1));
             this.skillManager.attacks.push({ x: px, y: py, radius: crossRadius, angle: 0,          life: 14, maxLife: 14, damage: dmg2, isCrit: isCrit2, isFullCircle: false, isLinear: true, halfWidth: 50, hitTargets: new Set() });
             this.skillManager.attacks.push({ x: px, y: py, radius: crossRadius, angle: Math.PI / 2, life: 14, maxLife: 14, damage: dmg2, isCrit: isCrit2, isFullCircle: false, isLinear: true, halfWidth: 50, hitTargets: new Set() });
-            // 차징 이펙트 시작
-            this.chargeEffect = { frames: 0, maxFrames: chargeFrames };
-            this.audioManager.playChargeStart();
-            // 3타: 차징 완료 후 발동
-            this.pendingEvents.push({ timer: chargeFrames, fn: () => {
-                this.chargeEffect = null;
-                this.audioManager.playChargeRelease();
-                const slashAngle = Math.atan2(p.dirY, p.dirX);
-                const isCrit3 = Math.random() < p.critChance;
-                const dmg3 = Math.floor(p.attackDamage * slashRatio * (isCrit3 ? p.critMultiplier : 1));
-                this.skillManager.attacks.push({ x: CONFIG.CANVAS_WIDTH / 2, y: CONFIG.CANVAS_HEIGHT / 2, radius: CONFIG.CANVAS_WIDTH * 1.2, angle: slashAngle, life: 20, maxLife: 20, damage: 0, isCrit: isCrit3, isFullCircle: false, isLinear: true, hitTargets: new Set() });
-                this.screenShake = { duration: 30, intensity: 12 };
-                for (let j = this.enemies.length - 1; j >= 0; j--) {
-                    if (this.processHit(this.enemies[j], dmg3, isCrit3)) this.enemies.splice(j, 1);
-                }
-                if (isCrit3) this.applyChainLightning({ x: p.x, y: p.y });
-            }});
+            if (isCrit2) this.applyChainLightning({ x: px, y: py });
+        }});
+        // 3타: 화면 전체 참격 (25프레임 후)
+        this.pendingEvents.push({ timer: 25, fn: () => {
+            const slashAngle = Math.atan2(p.dirY, p.dirX);
+            const isCrit3 = Math.random() < p.critChance;
+            const dmg3 = Math.floor(p.attackDamage * slashRatio * (isCrit3 ? p.critMultiplier : 1));
+            this.skillManager.attacks.push({ x: CONFIG.CANVAS_WIDTH / 2, y: CONFIG.CANVAS_HEIGHT / 2, radius: CONFIG.CANVAS_WIDTH * 1.2, angle: slashAngle, life: 20, maxLife: 20, damage: 0, isCrit: isCrit3, isFullCircle: false, isLinear: true, hitTargets: new Set() });
+            this.screenShake = { duration: 30, intensity: 12 };
+            for (let j = this.enemies.length - 1; j >= 0; j--) {
+                if (this.processHit(this.enemies[j], dmg3, isCrit3)) this.enemies.splice(j, 1);
+            }
+            if (isCrit3) this.applyChainLightning({ x: p.x, y: p.y });
         }});
     }
     triggerBulletBurst(atk, multishot) {
@@ -1571,5 +1703,118 @@ class Game {
             </div>
         `).join('');
     }
+
+    // ── Miku 로비 캐릭터 ──────────────────────────────────────
+    initMiku() {
+        this.mikuEl = document.getElementById('miku-container');
+        this.mikuBubble = document.getElementById('miku-bubble');
+        this.mikuBubbleText = document.getElementById('miku-bubble-text');
+        this.mikuCursor = document.getElementById('miku-cursor');
+        this.mikuSfx = document.getElementById('miku-sfx');
+        if (!this.mikuEl) return;
+
+        this.mikuDialogues = [
+            "시스템 정상 가동 중.\n언제든 출격 가능해, 파일럿!",
+            "적들의 신호가 점점 강해지고 있어.\n조심해야 해.",
+            "15레벨이 되면 첫 번째 보스가 나타날 거야.\n준비는 됐어?",
+            "무기 업그레이드는 5스택마다\n진화한다는 사실, 잊지 마!",
+            "잠깐 쉬는 것도 전략이야.\n내가 감시하고 있을게.",
+            "오늘의 전술 데이터 분석 완료.\n성능 향상을 기대해도 좋아.",
+            "가끔씩 시스템 어딘가에서\n대파가 등장한다는 소문이 있던데...."
+        ];
+        this.mikuTalking = false;
+        this.mikuTypeTimer = null;
+        this.mikuBubbleTimer = null;
+        this.mikuRoamTimer = null;
+
+        // 초기 위치 설정
+        this._mikuPlace(20, 80);
+
+        // 첫 로밍은 2초 후 시작
+        setTimeout(() => this._mikuScheduleRoam(), 2000);
+
+        // 클릭 이벤트
+        this.mikuEl.addEventListener('click', () => this._mikuOnClick());
+    }
+
+    _mikuPlace(leftPct, bottomPx) {
+        if (!this.mikuEl) return;
+        this.mikuEl.style.left = leftPct + '%';
+        this.mikuEl.style.bottom = bottomPx + 'px';
+    }
+
+    _mikuScheduleRoam() {
+        if (this.mikuRoamTimer) clearTimeout(this.mikuRoamTimer);
+        const delay = 10000 + Math.random() * 5000; // 10~15초
+        this.mikuRoamTimer = setTimeout(() => {
+            if (!this.mikuTalking) this._mikuRoam();
+            this._mikuScheduleRoam();
+        }, delay);
+    }
+
+    _mikuRoam() {
+        const main = document.getElementById('lobby-main');
+        if (!main || !this.mikuEl) return;
+        const maxLeft = 75; // % (캐릭터 폭 고려)
+        const minLeft = 5;
+        const maxBottom = Math.floor(main.offsetHeight * 0.45);
+        const minBottom = 55;
+        const newLeft = minLeft + Math.random() * (maxLeft - minLeft);
+        const newBottom = minBottom + Math.random() * (maxBottom - minBottom);
+        this._mikuPlace(newLeft, newBottom);
+    }
+
+    _mikuOnClick() {
+        if (!this.mikuEl) return;
+        // 점프 + 발광 효과
+        this.mikuEl.classList.remove('miku-jumping');
+        void this.mikuEl.offsetWidth; // reflow
+        this.mikuEl.classList.add('miku-jumping', 'miku-glow');
+        setTimeout(() => {
+            if (this.mikuEl) this.mikuEl.classList.remove('miku-jumping', 'miku-glow');
+        }, 600);
+
+        // 사운드 재생
+        if (this.mikuSfx) {
+            this.mikuSfx.currentTime = 0;
+            this.mikuSfx.volume = 0.5;
+            this.mikuSfx.play().catch(() => {});
+        }
+
+        // 말풍선 대사 출력
+        this._mikuSpeak(this.mikuDialogues[Math.floor(Math.random() * this.mikuDialogues.length)]);
+    }
+
+    _mikuSpeak(text) {
+        if (!this.mikuBubble || !this.mikuBubbleText) return;
+        // 기존 타이머 정리
+        if (this.mikuTypeTimer) clearTimeout(this.mikuTypeTimer);
+        if (this.mikuBubbleTimer) clearTimeout(this.mikuBubbleTimer);
+        this.mikuTalking = true;
+        this.mikuBubbleText.textContent = '';
+        this.mikuCursor.style.display = 'inline-block';
+        this.mikuBubble.classList.add('bubble-visible');
+
+        // 타이핑 효과
+        let i = 0;
+        const type = () => {
+            if (i < text.length) {
+                this.mikuBubbleText.textContent += text[i++];
+                this.mikuTypeTimer = setTimeout(type, 38);
+            } else {
+                // 타이핑 완료 → 5초 후 페이드아웃
+                this.mikuCursor.style.display = 'none';
+                this.mikuBubbleTimer = setTimeout(() => {
+                    this.mikuBubble.classList.remove('bubble-visible');
+                    setTimeout(() => {
+                        if (this.mikuBubbleText) this.mikuBubbleText.textContent = '';
+                        this.mikuTalking = false;
+                    }, 320);
+                }, 5000);
+            }
+        };
+        type();
+    }
 }
 window.onload = () => { new Game(); };
+

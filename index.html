@@ -186,14 +186,23 @@
             </aside>
 
             <!-- Page Content (Lobby Background) -->
-            <main class="flex-1 relative overflow-hidden bg-[#0a0a1a]">
+            <main id="lobby-main" class="flex-1 relative overflow-hidden bg-[#0a0a1a]">
                 <div class="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
                     <span class="material-symbols-outlined text-[300px] text-primary">rocket_launch</span>
                 </div>
                 <div class="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent"></div>
-                <div class="absolute inset-0 flex flex-col items-center justify-center p-12 text-center">
+                <div class="absolute inset-0 flex flex-col items-center justify-center p-12 text-center pointer-events-none">
                     <h1 class="text-6xl font-headline font-bold text-primary mb-4 tracking-tighter">CYBER SURVIVOR</h1>
                     <p class="text-on-surface/60 max-w-md font-body leading-relaxed">이동: 방향키 (Arrow Keys)<br>공격: Z 키 (전방 범위 공격)<br>회피: Spacebar (무적 대시)</p>
+                </div>
+                <!-- Miku Lobby Character -->
+                <div id="miku-container">
+                    <div id="miku-bubble">
+                        <div class="bubble-name">MIKU_AI</div>
+                        <div id="miku-bubble-text"></div>
+                        <span id="miku-cursor" class="bubble-cursor"></span>
+                    </div>
+                    <img id="miku-char" src="Image/Miku_Idle.png" class="aria-float" alt="Miku" draggable="false" />
                 </div>
             </main>
         </div>
@@ -260,6 +269,8 @@
             <div class="border-t border-error/30 pt-1 mt-1 text-[8px] text-error/50 font-mono">── WEAPON ──</div>
             <button id="dev-arondight" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">아론다이트 (T3)</button>
             <button id="dev-excalibur" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">엑스칼리버 (T4)</button>
+            <button id="dev-domination" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">지배 (T3)</button>
+            <button id="dev-extinction" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">소멸 (T4)</button>
             <div id="dev-info" class="text-[9px] text-on-surface/40 font-mono mt-2 leading-tight"></div>
         </div>
     </div>
@@ -402,6 +413,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+    <audio id="miku-sfx" src="Sound/Mikudayo sound.mp3" preload="auto"></audio>
 
     <!-- JavaScript Files -->
     <script src="js/firebase-config.js"></script>

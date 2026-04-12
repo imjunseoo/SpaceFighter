@@ -200,6 +200,89 @@ button.start-btn:hover { background-color: #fff; color: #000; }
 .dev-btn:hover { background: #f0f; color: #000; }
 .dev-info { color: #aaa; font-size: 0.75rem; margin-top: 4px; line-height: 1.5; }
 
+/* ── Miku Lobby Character ───────────────────────────────── */
+#miku-container {
+    position: absolute;
+    cursor: pointer;
+    transition: left 2.2s cubic-bezier(0.4, 0, 0.2, 1), bottom 2.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: bottom center;
+    user-select: none;
+    z-index: 10;
+}
+#miku-char {
+    height: 160px;
+    display: block;
+    filter: drop-shadow(0 0 8px rgba(0, 218, 243, 0.3));
+    transition: filter 0.2s;
+}
+@keyframes miku-jump {
+    0%   { transform: translateY(0) scaleX(1); }
+    20%  { transform: translateY(-30px) scaleX(0.95); }
+    50%  { transform: translateY(-44px) scaleX(1.05); }
+    75%  { transform: translateY(-8px) scaleX(0.97); }
+    90%  { transform: translateY(3px) scaleX(1.02); }
+    100% { transform: translateY(0) scaleX(1); }
+}
+.miku-jumping {
+    animation: miku-jump 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.miku-glow #miku-char {
+    filter: drop-shadow(0 0 18px rgba(0, 218, 243, 0.9)) brightness(1.35);
+}
+
+/* 말풍선 */
+#miku-bubble {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 220px;
+    max-width: 300px;
+    background: rgba(10, 12, 24, 0.92);
+    border: 1px solid rgba(0, 218, 243, 0.5);
+    padding: 10px 14px;
+    color: #e2e2e8;
+    font-family: "Manrope", sans-serif;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    box-shadow: 0 0 16px rgba(0, 218, 243, 0.2);
+}
+#miku-bubble::after {
+    content: '';
+    position: absolute;
+    top: 100%; left: 50%;
+    transform: translateX(-50%);
+    border: 7px solid transparent;
+    border-top-color: rgba(0, 218, 243, 0.5);
+}
+#miku-bubble.bubble-visible {
+    opacity: 1;
+}
+#miku-bubble .bubble-name {
+    font-size: 10px;
+    font-weight: bold;
+    color: #00daf3;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+    font-family: "Space Grotesk", sans-serif;
+}
+#miku-bubble .bubble-cursor {
+    display: inline-block;
+    width: 7px; height: 13px;
+    background: #00daf3;
+    vertical-align: text-bottom;
+    animation: cursor-blink 0.7s step-end infinite;
+    margin-left: 1px;
+}
+@keyframes cursor-blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+}
+
 /* Boss Warning Flash */
 @keyframes warningFlash {
     0%, 100% { opacity: 0; }

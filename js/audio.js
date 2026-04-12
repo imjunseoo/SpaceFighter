@@ -347,6 +347,97 @@ class AudioManager {
         osc3.start(now + 0.05); osc3.stop(now + 0.5);
     }
 
+    // 14. 지배(T3) 전용 날카로운 참격음
+    playDominionStrike() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        // 고음 금속 슬래시
+        const osc1 = this.ctx.createOscillator();
+        const gain1 = this.ctx.createGain();
+        osc1.type = 'sawtooth';
+        osc1.connect(gain1); gain1.connect(this.ctx.destination);
+        osc1.frequency.setValueAtTime(3200, now);
+        osc1.frequency.exponentialRampToValueAtTime(400, now + 0.12);
+        gain1.gain.setValueAtTime(0.22, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc1.start(now); osc1.stop(now + 0.12);
+        // 중저음 충격
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'square';
+        osc2.connect(gain2); gain2.connect(this.ctx.destination);
+        osc2.frequency.setValueAtTime(220, now);
+        osc2.frequency.exponentialRampToValueAtTime(55, now + 0.18);
+        gain2.gain.setValueAtTime(0.20, now);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc2.start(now); osc2.stop(now + 0.18);
+    }
+
+    // 15. 소멸(T4) 전조 에너지음
+    playAnnihilationStrike() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        // 에너지 수렴음 (고음에서 저음으로 급강하)
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.frequency.setValueAtTime(2800, now);
+        osc.frequency.exponentialRampToValueAtTime(80, now + 0.25);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.linearRampToValueAtTime(0.25, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        osc.start(now); osc.stop(now + 0.25);
+        // 잔향 공명
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'sine';
+        osc2.connect(gain2); gain2.connect(this.ctx.destination);
+        osc2.frequency.setValueAtTime(440, now + 0.1);
+        gain2.gain.setValueAtTime(0.08, now + 0.1);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc2.start(now + 0.1); osc2.stop(now + 0.5);
+    }
+
+    // 16. 소멸(T4) 전용 웅장한 폭발음
+    playAnnihilationExplosion() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        // 저음 충격파
+        const osc1 = this.ctx.createOscillator();
+        const gain1 = this.ctx.createGain();
+        osc1.type = 'sawtooth';
+        osc1.connect(gain1); gain1.connect(this.ctx.destination);
+        osc1.frequency.setValueAtTime(120, now);
+        osc1.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+        gain1.gain.setValueAtTime(0.35, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc1.start(now); osc1.stop(now + 0.5);
+        // 고음 폭발 충격
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'square';
+        osc2.connect(gain2); gain2.connect(this.ctx.destination);
+        osc2.frequency.setValueAtTime(800, now);
+        osc2.frequency.exponentialRampToValueAtTime(40, now + 0.35);
+        gain2.gain.setValueAtTime(0.25, now);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc2.start(now); osc2.stop(now + 0.35);
+        // 잔향 울림
+        const osc3 = this.ctx.createOscillator();
+        const gain3 = this.ctx.createGain();
+        osc3.type = 'sine';
+        osc3.connect(gain3); gain3.connect(this.ctx.destination);
+        osc3.frequency.setValueAtTime(220, now + 0.05);
+        osc3.frequency.exponentialRampToValueAtTime(55, now + 0.8);
+        gain3.gain.setValueAtTime(0.12, now + 0.05);
+        gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+        osc3.start(now + 0.05); osc3.stop(now + 0.8);
+    }
+
     // 12. 드론 미사일 폭발음
     playMissileExplosion() {
         this.init();
