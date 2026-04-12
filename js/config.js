@@ -93,8 +93,8 @@ const ARTIFACT_POOL = [
     {
         id: 'negotiation', tier: 3, category: 'weapon', evolves_to: 'judgment',
         name: '협상', icon: '🌠',
-        desc: '(Z) 유성 탄환 3연사. <span class="highlight">150%×3</span> 대미지.',
-        attack: { type: 'bullet_burst', damageRatio: 1.5, speed: 26, size: 7, cooldown: 18, burstCount: 3 }
+        desc: '(Z) 유성 탄환 3연사. <span class="highlight">150%×3</span> 대미지. 적중 시 <span class="highlight">범위 피해</span>.',
+        attack: { type: 'bullet_burst', damageRatio: 1.5, speed: 26, size: 7, cooldown: 18, burstCount: 3, aoeRadius: 80 }
     },
     {
         id: 'judgment', tier: 4, category: 'weapon',

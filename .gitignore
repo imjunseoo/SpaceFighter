@@ -1,0 +1,4 @@
+*.bak
+.claude/
+js/config.js.bak
+js/engine.js.bak

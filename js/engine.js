@@ -199,6 +199,22 @@ class Game {
             else this.player.artifacts.push(this.player.weaponArtifact);
             this.updateHUD(); this.updateArtifactTray(); this.updateDevInfo();
         };
+        document.getElementById('dev-negotiation').onclick = () => {
+            if (!this.player) return;
+            this.player.weaponArtifact = { defId: 'negotiation', category: 'weapon', stacks: 10, cooldown: 0 };
+            const idx = this.player.artifacts.findIndex(a => a.category === 'weapon');
+            if (idx >= 0) this.player.artifacts[idx] = this.player.weaponArtifact;
+            else this.player.artifacts.push(this.player.weaponArtifact);
+            this.updateHUD(); this.updateArtifactTray(); this.updateDevInfo();
+        };
+        document.getElementById('dev-judgment').onclick = () => {
+            if (!this.player) return;
+            this.player.weaponArtifact = { defId: 'judgment', category: 'weapon', stacks: 10, cooldown: 0 };
+            const idx = this.player.artifacts.findIndex(a => a.category === 'weapon');
+            if (idx >= 0) this.player.artifacts[idx] = this.player.weaponArtifact;
+            else this.player.artifacts.push(this.player.weaponArtifact);
+            this.updateHUD(); this.updateArtifactTray(); this.updateDevInfo();
+        };
 
         const btnAchieve = document.getElementById('btn-achievements');
         if (btnAchieve) {
@@ -659,7 +675,14 @@ class Game {
                 setTimeout(() => {
                     this.ui.mainOverlay.classList.remove('hidden'); this.ui.gameUILayer.classList.add('hidden'); this.canvas.classList.add('hidden');
                     // Miku 다시 표시 및 로밍 재개
-                    if (this.mikuEl) { this.mikuEl.style.display = ''; this._mikuScheduleRoam(); }
+                    if (this.mikuEl) {
+                        this.mikuEl.style.display = '';
+                        this._mikuScheduleRoam();
+                        if (this.isLastGameDefeat) {
+                            if (this.mikuImgEl) this.mikuImgEl.src = 'Image/Miku_Hujub.png';
+                            this.mikuState = 'TEASING';
+                        }
+                    }
                     const title = this.ui.mainOverlay.querySelector('h1'), desc = this.ui.mainOverlay.querySelector('p');
                     if (title) title.innerText = "SYSTEM FAILED"; if (desc) desc.innerHTML = `LV: ${this.player.level} / 생존 시간: ${this.ui.timer.innerText} / 킬수: ${this.score}`;
                     this.ui.startBtn.innerText = "REBOOT SYSTEM";
@@ -994,26 +1017,60 @@ class Game {
             const b = this.bullets[i];
             b.update(); b.draw(this.ctx);
             if (!b.isAlive) { this.bullets.splice(i, 1); continue; }
+
+            let victims = new Set();
             for (let j = this.enemies.length - 1; j >= 0; j--) {
                 const e = this.enemies[j];
                 if (b.hitTargets.has(e)) continue;
+
                 if (Utils.dist(b.x, b.y, e.x, e.y) < e.radius + b.size) {
                     b.hitTargets.add(e);
-                    // AoE 탄 (폭발 수리검 등): 범위 피해
+
+                    // 1. AoE 탄전 처리 (폭발 수리검 등: 충돌 시 즉시 폭발)
                     if (b.isAoe && b.aoeRadius) {
-                        for (let jj = this.enemies.length - 1; jj >= 0; jj--) {
-                            const ae = this.enemies[jj];
-                            if (Utils.dist(b.x, b.y, ae.x, ae.y) < b.aoeRadius) {
-                                if (this.processHit(ae, b.damage, b.isCrit, '#f80', false)) this.enemies.splice(jj, 1);
+                        const cx = b.x, cy = b.y, aoeR = b.aoeRadius;
+                        for (let k = this.enemies.length - 1; k >= 0; k--) {
+                            const ae = this.enemies[k];
+                            // 판정 범위 상향: 적의 반경(ae.radius) 포함
+                            if (Utils.dist(cx, cy, ae.x, ae.y) < aoeR + ae.radius) {
+                                if (this.processHit(ae, b.damage, b.isCrit, '#f80', true)) victims.add(ae);
                             }
                         }
-                        this.skillManager.createParticles(b.x, b.y, '#f80');
-                        b.isAlive = false; break;
+                        this.skillManager.createParticles(cx, cy, '#f80');
+                        // 가이드 원 추가
+                        this.skillManager.attacks.push({ x: cx, y: cy, radius: aoeR, angle: 0, life: 8, maxLife: 8, damage: 0, isCrit: false, isFullCircle: true, hitTargets: new Set() });
+                        b.isAlive = false;
+                    } else {
+                        // 2. 일반 탄환 또는 협상 광역 피해 처리 (직격 + 스플래시)
+                        if (this.processHit(e, b.damage, b.isCrit, b.color)) victims.add(e);
+
+                        // aoeRadius가 있는 경우 주변 스플래시
+                        if (b.aoeRadius) {
+                            const cx = b.x, cy = b.y, aoeR = b.aoeRadius;
+                            for (let k = this.enemies.length - 1; k >= 0; k--) {
+                                const ae = this.enemies[k];
+                                if (ae === e) continue;
+                                // 판정 범위 상향: 적의 반경 포함
+                                if (Utils.dist(cx, cy, ae.x, ae.y) < aoeR + ae.radius) {
+                                    if (this.processHit(ae, b.damage, b.isCrit, '#ffee00', true)) victims.add(ae);
+                                }
+                            }
+                            this.skillManager.createParticles(cx, cy, '#ffee00');
+                            this.skillManager.attacks.push({ x: cx, y: cy, radius: aoeR, angle: 0, life: 8, maxLife: 8, damage: 0, isCrit: false, isFullCircle: true, hitTargets: new Set() });
+                        }
+                        if (!b.piercing) b.isAlive = false;
                     }
-                    if (this.processHit(e, b.damage, b.isCrit, b.color)) this.enemies.splice(j, 1);
-                    if (!b.piercing) { b.isAlive = false; break; }
+
+                    // 적 제거 일괄 처리
+                    if (victims.size > 0) {
+                        this.enemies = this.enemies.filter(en => !victims.has(en));
+                        victims.clear();
+                    }
+
+                    if (!b.isAlive) break;
                 }
             }
+            if (!b.isAlive) this.bullets.splice(i, 1);
         }
 
         this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx);
@@ -1379,7 +1436,11 @@ class Game {
                     const angle = Utils.angle(p.x, p.y, tgt.x, tgt.y) + offset;
                     const isCrit = Math.random() < p.critChance;
                     const dmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
-                    this.bullets.push(new Bullet(p.x, p.y, angle, dmg, isCrit ? '#fff' : '#ff0', atk.speed, atk.size, isCrit));
+                    const blt = new Bullet(p.x, p.y, angle, dmg, isCrit ? '#fff' : '#ff0', atk.speed, atk.size, isCrit);
+                    if (atk.aoeRadius) {
+                        blt.aoeRadius = atk.aoeRadius;
+                    }
+                    this.bullets.push(blt);
                     if (isCrit) this.applyChainLightning(tgt, true);
                 }
                 this.audioManager.playMissileLaunch();
@@ -1518,7 +1579,7 @@ class Game {
         boss.y = margin + Math.random() * (CONFIG.CANVAS_HEIGHT - margin * 2);
         for (let k = 0; k < 5; k++) this.skillManager.createParticles(boss.x, boss.y, k % 2 === 0 ? '#f0f' : '#0ff');
     }
-    triggerGameOver() { this.audioManager.stopBGM(); this.audioManager.playHit(); this.state = 'PLAYER_DYING'; this.player.deathTimer = 30; }
+    triggerGameOver() { this.audioManager.stopBGM(); this.audioManager.playHit(); this.state = 'PLAYER_DYING'; this.player.deathTimer = 30; this.isLastGameDefeat = true; }
     checkRecoveryTrigger() {
         // 리커버리가 방금 발동됐고 아직 충격파를 생성하지 않은 경우에만 실행
         if (this.player.has.recovery && this.player.recoveryUsed && !this.recoveryShockwaveUsed) {
@@ -1707,11 +1768,15 @@ class Game {
     // ── Miku 로비 캐릭터 ──────────────────────────────────────
     initMiku() {
         this.mikuEl = document.getElementById('miku-container');
+        this.mikuImgEl = document.getElementById('miku-char');
         this.mikuBubble = document.getElementById('miku-bubble');
         this.mikuBubbleText = document.getElementById('miku-bubble-text');
         this.mikuCursor = document.getElementById('miku-cursor');
         this.mikuSfx = document.getElementById('miku-sfx');
         if (!this.mikuEl) return;
+
+        this.mikuState = 'IDLE';
+        this.isLastGameDefeat = false;
 
         this.mikuDialogues = [
             "시스템 정상 가동 중.\n언제든 출격 가능해, 파일럿!",
@@ -1781,6 +1846,14 @@ class Game {
             this.mikuSfx.play().catch(() => {});
         }
 
+        // TEASING 상태 특별 처리
+        if (this.mikuState === 'TEASING') {
+            if (this.mikuTalking) return;
+            if (this.mikuImgEl) this.mikuImgEl.src = 'Image/Miku_Nunchi.png';
+            this._mikuSpeak("방금 판은... 미안해!\n조금 놀려주고 싶었을 뿐이야.\n다음엔 더 잘할 수 있을 거야!");
+            return;
+        }
+
         // 말풍선 대사 출력
         this._mikuSpeak(this.mikuDialogues[Math.floor(Math.random() * this.mikuDialogues.length)]);
     }
@@ -1809,6 +1882,11 @@ class Game {
                     setTimeout(() => {
                         if (this.mikuBubbleText) this.mikuBubbleText.textContent = '';
                         this.mikuTalking = false;
+                        if (this.mikuState === 'TEASING') {
+                            if (this.mikuImgEl) this.mikuImgEl.src = 'Image/Miku_Idle.png';
+                            this.mikuState = 'IDLE';
+                            this.isLastGameDefeat = false;
+                        }
                     }, 320);
                 }, 5000);
             }
