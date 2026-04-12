@@ -81,6 +81,13 @@
         body { font-family: "Manrope", sans-serif; }
         .font-headline { font-family: "Space Grotesk", sans-serif; }
         .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 300, "GRAD" 0, "opsz" 24; }
+        @keyframes aria-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+        @keyframes aria-scanline { 0%{transform:translateY(-100%)} 100%{transform:translateY(100%)} }
+        @keyframes aria-blink { 0%,90%,100%{opacity:1} 92%,98%{opacity:0.1} }
+        @keyframes tut-fadein { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        .aria-float { animation: aria-float 3.5s ease-in-out infinite; }
+        .aria-blink { animation: aria-blink 4s ease-in-out infinite; }
+        #tutorial-text { animation: tut-fadein 0.25s ease-out both; }
         /* 외부 이미지 제거 및 CSS 노이즈 대체 */
         .digital-grain {
             background-image: none;
@@ -160,6 +167,10 @@
                         <span class="material-symbols-outlined mr-3 text-sm">leaderboard</span>
                         <span>LEADERBOARD</span>
                     </a>
+                    <a id="btn-tutorial" class="flex items-center text-on-surface/60 hover:bg-surface-container-high hover:text-on-surface px-6 py-4 font-headline text-xs tracking-widest transition-all cursor-pointer">
+                        <span class="material-symbols-outlined mr-3 text-sm">help_outline</span>
+                        <span>TUTORIAL</span>
+                    </a>
                 </nav>
                 <div class="mt-auto p-6 space-y-6">
                     <div class="space-y-2">
@@ -209,6 +220,7 @@
         </div>
         
         <div id="acquired-skills-container" class="absolute bottom-12 right-6 flex gap-2"></div>
+        <div id="artifact-tray" class="absolute bottom-12 left-4 flex flex-col gap-1 pointer-events-none"></div>
     </div>
 
     <!-- Game Canvas -->
@@ -245,6 +257,9 @@
             <button id="dev-lvup5" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">Level +5</button>
             <button id="dev-hp" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">HP Full</button>
             <button id="dev-kill-all" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">Kill All</button>
+            <div class="border-t border-error/30 pt-1 mt-1 text-[8px] text-error/50 font-mono">── WEAPON ──</div>
+            <button id="dev-arondight" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">아론다이트 (T3)</button>
+            <button id="dev-excalibur" class="px-3 py-1 bg-error/10 text-error text-[10px] font-bold border border-error/30 hover:bg-error hover:text-white">엑스칼리버 (T4)</button>
             <div id="dev-info" class="text-[9px] text-on-surface/40 font-mono mt-2 leading-tight"></div>
         </div>
     </div>
@@ -272,6 +287,22 @@
                 <div class="text-center text-on-surface/50 font-body py-8">Loading achievements...</div>
             </div>
         </div>
+        <!-- Miku (모달 우측 중앙) -->
+        <div style="position:absolute; left:calc(50% + 356px); top:50%; transform:translateY(-50%); pointer-events:none; display:flex; flex-direction:column; align-items:center; width:230px;">
+            <!-- 말풍선 -->
+            <div style="background:rgba(4,8,20,0.75); border:1px solid rgba(0,218,243,0.45); border-radius:12px; padding:11px 15px; margin-bottom:14px; position:relative; font-family:'Space Grotesk',sans-serif; font-size:11px; color:rgba(226,226,232,0.88); line-height:1.65; text-align:center; backdrop-filter:blur(6px); box-shadow:0 0 16px rgba(0,218,243,0.12);">
+                파일럿의 모든 <b style="color:#00daf3">전투 기록</b>이 여기 있어.<br>
+                아직 잠긴 도전이 있다면,<br>
+                <b style="color:#ffba38">다시 전장으로 돌아와</b> — 나도 함께할게.
+                <!-- 꼬리 -->
+                <div style="position:absolute; bottom:-9px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-top:9px solid rgba(0,218,243,0.45);"></div>
+                <div style="position:absolute; bottom:-7px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:7px solid transparent; border-right:7px solid transparent; border-top:7px solid rgba(4,8,20,0.85);"></div>
+            </div>
+            <!-- 미쿠 이미지 -->
+            <img src="Image/Miku_Achieve.png" alt="Miku" class="aria-float"
+                 style="height:320px; width:auto; object-fit:contain; position:relative; z-index:1;
+                        filter:drop-shadow(0 0 16px rgba(0,218,243,0.38)) drop-shadow(0 0 50px rgba(0,218,243,0.13));"/>
+        </div>
     </div>
 
     <!-- Patch Note Modal -->
@@ -298,6 +329,69 @@
             </h2>
             <div id="leaderboard-list" class="space-y-2 max-h-[60vh] overflow-y-auto pr-2 font-headline">
                 <div class="text-center text-on-surface/50 py-8">Accessing Satellite Data...</div>
+            </div>
+        </div>
+        <!-- Miku (모달 우측 중앙) -->
+        <div style="position:absolute; left:calc(50% + 356px); top:50%; transform:translateY(-50%); pointer-events:none; display:flex; flex-direction:column; align-items:center; width:230px;">
+            <div style="background:rgba(4,8,20,0.75); border:1px solid rgba(0,218,243,0.45); border-radius:12px; padding:11px 15px; margin-bottom:14px; position:relative; font-family:'Space Grotesk',sans-serif; font-size:11px; color:rgba(226,226,232,0.88); line-height:1.65; text-align:center; backdrop-filter:blur(6px); box-shadow:0 0 16px rgba(0,218,243,0.12);">
+                전 세계 <b style="color:#00daf3">파일럿들의 전적</b>이 여기 있어.<br>
+                상위권에 네 이름이 보일 때까지,<br>
+                <b style="color:#ffba38">포기하지 마</b> — 내가 지켜보고 있을게.
+                <div style="position:absolute; bottom:-9px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-top:9px solid rgba(0,218,243,0.45);"></div>
+                <div style="position:absolute; bottom:-7px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:7px solid transparent; border-right:7px solid transparent; border-top:7px solid rgba(4,8,20,0.85);"></div>
+            </div>
+            <img src="Image/Miku_LeaderBoard.png" alt="Miku" class="aria-float"
+                 style="height:320px; width:auto; object-fit:contain; position:relative; z-index:1;
+                        filter:drop-shadow(0 0 16px rgba(0,218,243,0.38)) drop-shadow(0 0 50px rgba(0,218,243,0.13));"/>
+        </div>
+    </div>
+
+    <!-- Tutorial Overlay -->
+    <div id="tutorial-overlay" class="fixed inset-0 z-[350] hidden" style="pointer-events:none;">
+        <!-- Full dark backdrop -->
+        <div class="absolute inset-0" style="background:rgba(4,6,12,0.82); backdrop-filter:blur(4px); pointer-events:none;"></div>
+
+        <!-- SKIP + DOTS bar (top-right) -->
+        <div style="position:absolute; top:24px; right:28px; display:flex; align-items:center; gap:14px; z-index:2; pointer-events:auto;">
+            <div id="tutorial-dots" style="display:flex; gap:7px;"></div>
+            <button id="tutorial-skip" style="background:none; border:1px solid rgba(226,226,232,0.18); color:rgba(226,226,232,0.35); font-family:'Space Grotesk',sans-serif; font-size:10px; letter-spacing:0.18em; cursor:pointer; padding:5px 14px; transition:all 0.2s;" onmouseover="this.style.color='#e2e2e8';this.style.borderColor='rgba(226,226,232,0.5)'" onmouseout="this.style.color='rgba(226,226,232,0.35)';this.style.borderColor='rgba(226,226,232,0.18)'">SKIP ›</button>
+        </div>
+
+        <!-- Main layout: dialog left, character right -->
+        <div id="tutorial-panel" style="position:absolute; bottom:0; left:0; right:0; display:flex; align-items:flex-end; pointer-events:auto; cursor:pointer;">
+
+            <!-- Dialog box -->
+            <div style="flex:1; margin:0 24px 48px 48px; position:relative;">
+                <!-- Decorative corner accents -->
+                <div style="position:absolute; top:-1px; left:-1px; width:18px; height:18px; border-top:2px solid #00daf3; border-left:2px solid #00daf3;"></div>
+                <div style="position:absolute; top:-1px; right:-1px; width:18px; height:18px; border-top:2px solid #00daf3; border-right:2px solid #00daf3;"></div>
+                <div style="position:absolute; bottom:-1px; left:-1px; width:18px; height:18px; border-bottom:2px solid #00daf3; border-left:2px solid #00daf3;"></div>
+                <div style="position:absolute; bottom:-1px; right:-1px; width:18px; height:18px; border-bottom:2px solid #00daf3; border-right:2px solid #00daf3;"></div>
+                <!-- Box background -->
+                <div style="background:rgba(6,9,16,0.95); border:1px solid rgba(0,218,243,0.22); padding:28px 36px 24px 36px;">
+                    <!-- Name plate -->
+                    <div style="display:inline-flex; align-items:center; gap:10px; background:rgba(0,218,243,0.08); border:1px solid rgba(0,218,243,0.3); padding:6px 16px; margin-bottom:18px;">
+                        <div style="width:7px; height:7px; background:#00daf3; border-radius:50%; box-shadow:0 0 8px #00daf3;"></div>
+                        <span style="color:#00daf3; font-family:'Space Grotesk',sans-serif; font-size:12px; font-weight:700; letter-spacing:0.22em;">MIKU</span>
+                        <span style="color:rgba(0,218,243,0.45); font-family:'Space Grotesk',sans-serif; font-size:10px; letter-spacing:0.15em;">// TACTICAL SUPPORT</span>
+                    </div>
+                    <!-- Dialog text -->
+                    <div id="tutorial-text" style="color:#e8e8f0; font-family:'Manrope',sans-serif; font-size:17px; line-height:1.75; min-height:80px; letter-spacing:0.01em;"></div>
+                    <!-- Continue hint -->
+                    <div style="display:flex; justify-content:flex-end; align-items:center; margin-top:20px; gap:16px;">
+                        <div style="flex:1; height:1px; background:linear-gradient(to right, transparent, rgba(0,218,243,0.15));"></div>
+                        <div id="tutorial-hint" style="color:rgba(226,226,232,0.32); font-family:'Space Grotesk',sans-serif; font-size:10px; letter-spacing:0.2em; animation:aria-float 2s ease-in-out infinite;">▶ SPACE / 클릭</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Miku character (large, flush to bottom, right side) -->
+            <div style="flex-shrink:0; position:relative; width:340px; display:flex; align-items:flex-end; justify-content:center; margin-right:40px;">
+                <div style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:260px; height:200px; background:radial-gradient(ellipse at 50% 100%, rgba(0,218,243,0.18) 0%, transparent 65%); pointer-events:none;"></div>
+                <div style="position:absolute; bottom:0; left:0; right:0; height:60px; background:linear-gradient(to top, rgba(4,6,12,0.7) 0%, transparent 100%); pointer-events:none; z-index:2;"></div>
+                <img src="Image/Miku_Tutorial.png" alt="Miku" class="aria-float"
+                     style="height:420px; width:auto; object-fit:contain; object-position:bottom; position:relative; z-index:1;
+                            filter:drop-shadow(0 0 20px rgba(0,218,243,0.4)) drop-shadow(0 0 60px rgba(0,218,243,0.15));"/>
             </div>
         </div>
     </div>

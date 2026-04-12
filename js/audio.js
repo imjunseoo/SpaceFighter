@@ -310,6 +310,43 @@ class AudioManager {
         osc.start(now); osc.stop(now + 0.1);
     }
 
+    // 13. 십자가 대형 참격음 — 중저음 충격 + 날카로운 금속 슬래시 + 잔향
+    playCrossSlash() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        // 레이어 1: 중저음 충격파 (묵직한 임팩트)
+        const osc1 = this.ctx.createOscillator();
+        const gain1 = this.ctx.createGain();
+        osc1.type = 'square';
+        osc1.connect(gain1); gain1.connect(this.ctx.destination);
+        osc1.frequency.setValueAtTime(180, now);
+        osc1.frequency.exponentialRampToValueAtTime(28, now + 0.35);
+        gain1.gain.setValueAtTime(0.30, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc1.start(now); osc1.stop(now + 0.35);
+        // 레이어 2: 고음 날카로운 금속 슬래시
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'sawtooth';
+        osc2.connect(gain2); gain2.connect(this.ctx.destination);
+        osc2.frequency.setValueAtTime(2400, now);
+        osc2.frequency.exponentialRampToValueAtTime(280, now + 0.22);
+        gain2.gain.setValueAtTime(0.18, now);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc2.start(now); osc2.stop(now + 0.22);
+        // 레이어 3: 잔향 공명 (금속 울림)
+        const osc3 = this.ctx.createOscillator();
+        const gain3 = this.ctx.createGain();
+        osc3.type = 'sine';
+        osc3.connect(gain3); gain3.connect(this.ctx.destination);
+        osc3.frequency.setValueAtTime(660, now + 0.05);
+        osc3.frequency.exponentialRampToValueAtTime(330, now + 0.5);
+        gain3.gain.setValueAtTime(0.10, now + 0.05);
+        gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc3.start(now + 0.05); osc3.stop(now + 0.5);
+    }
+
     // 12. 드론 미사일 폭발음
     playMissileExplosion() {
         this.init();

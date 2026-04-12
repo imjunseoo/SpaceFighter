@@ -14,35 +14,36 @@ class Player {
         this.dirX = 1; this.dirY = 0;
         this.isDashing = false; this.dashTimer = 0;
         this.maxDashCooldown = CONFIG.PLAYER.MAX_DASH_COOLDOWN; this.dashCooldown = 0;
-        this.vampireChance = 0; this.critChance = 0; this.critMultiplier = 2;
+        this.vampireChance = 0;
+        this.critChance = CONFIG.PLAYER.CRIT_CHANCE;
+        this.critMultiplier = CONFIG.PLAYER.CRIT_MULTIPLIER;
         // 스킬 스택 카운터
-        this.surgeCathodeStacks = 0;   // 서지 캐소드 중첩 횟수
         this.chainLightningStacks = 0; // 연쇄 번개 중첩 횟수
-        this.surgeCritActive = false;  // 대시 후 크리 보장 여부
-        this.surgeCritTimer = 0;       // 남은 프레임 (2초 = 120f)
         // Prism 획득 여부
-        this.has = { binding_king: false, reversal: false, berserk: false, blackhole: false, recovery: false };
+        this.has = { binding_king: false, reversal: false, berserk: false, blackhole: false, recovery: false,
+                     kill_atk: false, kill_hp: false };
         this.recoveryUsed = false;     // 리커버리 발동 여부 (1회)
         this.bindingKingAura = 0;      // 아우라 애니메이션 프레임
         this.blackholes = [];          // 활성 블랙홀 목록
-        this.job = null;
-        this.combo = 0; this.comboTimer = 0;
-        this.charging = false; this.chargeTimer = 0; this.chargeReady = false; // 소드마스터 차징
+        // 아티팩트 시스템
+        this.artifacts = [];           // 획득한 아티팩트 목록
+        this.weaponArtifact = null;    // 장착된 무기 아티팩트
+        this.killCount = 0;
+        this.expMultiplier = 1.0;
+        this.droneBulletCount = 1;
+        this.toolFireRateBonus = 0;
+        this.droneFireRateBonus = 0;
+        this.toolBulletCount = 1;
         this.drones = [];
+        this.pendingEvolution = null; // { icon, name } — 진화 연출 대기 신호
     }
 
     update(input) {
         if (this.dashCooldown > 0) this.dashCooldown--;
         if (input.keys[' '] && this.dashCooldown <= 0 && !this.isDashing) {
             this.isDashing = true; this.dashTimer = 10; this.dashCooldown = this.maxDashCooldown; this.invincible = 15;
-            // 서지 캐소드: 대시 사용 시 크리 보장 타이머 설정 (2초 = 120f)
-            if (this.surgeCathodeStacks > 0) { this.surgeCritActive = true; this.surgeCritTimer = 120; }
         }
 
-        // 소드마스터 차징 중: 타이머 감소 (이동 가능)
-        if (this.charging) {
-            if (--this.chargeTimer <= 0) { this.charging = false; this.chargeReady = true; }
-        }
         {
             let dx = 0, dy = 0;
             if (!this.isDashing) {
@@ -63,14 +64,6 @@ class Player {
         if (this.cooldown > 0) this.cooldown--;
         if (this.invincible > 0) this.invincible--;
 
-        // 콤보 타이머 관리 (1초 내에 다음 공격 안하면 초기화)
-        if (this.comboTimer > 0) {
-            if (--this.comboTimer <= 0) this.combo = 0;
-        }
-        // 서지 캐소드 타이머 감소
-        if (this.surgeCritTimer > 0) {
-            if (--this.surgeCritTimer <= 0) { this.surgeCritActive = false; }
-        }
         // 속박의 왕 아우라 프레임 증가
         if (this.has.binding_king) this.bindingKingAura++;
         // 블랙홀 업데이트
@@ -167,7 +160,7 @@ class Player {
     }
 
     gainExp(amount) {
-        this.exp += amount;
+        this.exp += Math.floor(amount * this.expMultiplier);
         let leveledUp = false;
         // 한 번에 exp가 대량으로 들어와도 정확히 레벨업 횟수만큼 처리
         while (this.exp >= this.maxExp) {
@@ -182,26 +175,67 @@ class Player {
     }
 
     applyUpgrade(skillId) {
+        // ── 아티팩트 처리 ──────────────────────────────────────────────
+        const artifactDef = ARTIFACT_POOL.find(a => a.id === skillId);
+        if (artifactDef) {
+            const existing = this.artifacts.find(a => a.defId === skillId);
+            if (existing) {
+                existing.stacks++;
+                // 5중첩 → 진화
+                if (existing.stacks >= 5 && artifactDef.evolves_to) {
+                    existing.defId = artifactDef.evolves_to;
+                    existing.stacks = 1;
+                    if (artifactDef.category === 'weapon') this.weaponArtifact = existing;
+                    // 드론: 기존 드론 전부 제거 후 Tier 2 드론 1대 소환
+                    if (artifactDef.category === 'drone') {
+                        this.drones = [];
+                        this.drones.push(new ArtifactDrone(existing, 0));
+                    }
+                    const evolvedDef = ARTIFACT_POOL.find(a => a.id === existing.defId);
+                    this.pendingEvolution = { icon: evolvedDef?.icon || '✨', name: evolvedDef?.name || 'EVOLVED' };
+                } else if (artifactDef.category === 'drone' && this.drones.length < 5) {
+                    // 드론 중첩: 새 ArtifactDrone 추가 (최대 5대)
+                    this.drones.push(new ArtifactDrone(existing, 0));
+                    this.drones.forEach((d, i) => { d.orbitAngle = (Math.PI * 2 / this.drones.length) * i; });
+                }
+            } else {
+                const newArt = { defId: skillId, category: artifactDef.category, stacks: 1, cooldown: 0 };
+                this.artifacts.push(newArt);
+                if (artifactDef.category === 'weapon') {
+                    this.weaponArtifact = newArt;
+                } else if (artifactDef.category === 'drone') {
+                    this.drones.push(new ArtifactDrone(newArt, 0));
+                    this.drones.forEach((d, i) => { d.orbitAngle = (Math.PI * 2 / this.drones.length) * i; });
+                }
+            }
+            return;
+        }
+
+        // ── 어빌리티 카드 처리 ────────────────────────────────────────
         switch (skillId) {
-            // ── Bronze ──────────────────────────────
-            case 'output_module': this.attackDamage += 5; break;
-            case 'lens_expand': this.attackRange *= 1.15; break;
-            case 'coolant_pump': this.maxCooldown *= 0.9; break;
-            case 'endurance_up': this.maxHp += 100; this.hp = Math.min(this.maxHp, this.hp + 100); break;
-
-            // ── Silver ──────────────────────────────
+            case 'output_module':   this.attackDamage += 5; break;
+            case 'endurance_up':    this.maxHp += 100; this.hp = Math.min(this.maxHp, this.hp + 100); break;
+            case 'speed_boost':     this.speed += 0.5; break;
+            case 'crit_logic':      this.critChance += 0.1; break;
+            case 'crit_research':   this.critMultiplier += 0.10; break;
             case 'vampire_circuit': this.vampireChance += 0.05; break;
-            case 'surge_cathode': this.surgeCathodeStacks++; break;  // 중첩당 크리 데미지 +10은 engine.js에서 처리
-
-            // ── Gold ────────────────────────────────
-            case 'chain_lightning': this.chainLightningStacks++; break;
-            case 'crit_logic': this.critChance += 0.1; break;
-            case 'crit_research': this.critMultiplier += 0.05; break;
-
-            // ── Prism ────────────────────────────────
+            case 'weapon_atkspd':
+                if (this.weaponArtifact) {
+                    const def = ARTIFACT_POOL.find(a => a.id === this.weaponArtifact.defId);
+                    if (def) def.attack.cooldown = Math.max(5, Math.round(def.attack.cooldown * 0.85));
+                }
+                break;
+            case 'tool_fire_rate':    this.toolFireRateBonus += 0.2; break;
+            case 'tool_multishot':    this.toolBulletCount++; break;
+            case 'drone_fire_rate':   this.droneFireRateBonus = Math.min(0.8, this.droneFireRateBonus + 0.2); break;
+            case 'drone_multishot':   this.droneBulletCount++; break;
+            case 'exp_boost':         this.expMultiplier += 0.3; break;
+            case 'kill_atk':          this.has.kill_atk = true; break;
+            case 'kill_hp':           this.has.kill_hp  = true; break;
+            case 'chain_lightning':   this.chainLightningStacks++; break;
             case 'binding_king':
                 this.has.binding_king = true;
-                this.attackDamage += this.attackDamage * 2; // 현재 공격력의 2배를 추가
+                this.attackDamage += this.attackDamage * 2;
                 break;
             case 'reversal': {
                 this.has.reversal = true;
@@ -211,58 +245,28 @@ class Player {
                 this.hp = Math.min(this.hp, this.maxHp);
                 break;
             }
-            case 'berserk': this.has.berserk = true; break;
+            case 'berserk':   this.has.berserk = true; break;
             case 'blackhole': this.has.blackhole = true; break;
-            case 'recovery': this.has.recovery = true; break;
-
-            // ── 1차 직업 ────────────────────────────
-            case 'install_sword':
-                this.job = 'swordman';
-                this.maxCooldown *= 1.2;    // 공격 속도 20% 하향
-                break;
-            case 'install_gunner':
-                this.job = 'gunner';
-                this.maxCooldown *= 0.35;   // 공격 속도 대폭 버프 (65% 감소)
-                break;
-            case 'install_mecha':
-                this.job = 'mecha';
-                this.drones.push(new Drone(0));
-                this.drones.push(new Drone(Math.PI));
-                break;
-
-            // ── 2차 전직 ────────────────────────────
-            case 'master_sword':
-                this.job = 'swordmaster';
-                break;
-            case 'master_gunner':
-                this.job = 'desperado';
-                this.maxCooldown = Math.max(5, this.maxCooldown * 0.4); // 연사 극대화
-                break;
-            case 'master_mecha':
-                this.job = 'overload';
-                // 드론 추가 없이 기존 드론이 융단 포격 모드로 전환
-                this.drones.forEach((d, i) => { d.orbitAngle = (Math.PI * 2 / this.drones.length) * i; });
-                break;
+            case 'recovery':  this.has.recovery = true; break;
         }
     }
 }
 
-class Drone {
-    constructor(angle) {
+class ArtifactDrone {
+    constructor(artifactRef, angle) {
+        this.artifactRef = artifactRef; // { defId, category, stacks, cooldown }
         this.orbitAngle = angle;
-        this.dist = 80;
-        this.speed = 0.05;
-        this.radius = 8;
-        this.color = '#f7d774'; // 아이보리 골드
-        this.damage = 5;
+        this.dist = 80; this.speed = 0.05; this.radius = 8;
+        this.color = '#f7d774';
         this.x = 0; this.y = 0;
-        this.fireCooldown = 0; // 발사 쿨타임 (프레임)
+        this.fireCooldown = 0;
     }
-    // 발사 준비 여부
+    get def() { return ARTIFACT_POOL.find(a => a.id === this.artifactRef.defId); }
     get readyToFire() { return this.fireCooldown <= 0; }
-    // player.maxCooldown 비율로 스케일된 쿨타임 설정
-    resetCooldown(baseInterval, player) {
-        this.fireCooldown = Math.max(8, Math.round(baseInterval * player.maxCooldown / CONFIG.PLAYER.MAX_COOLDOWN));
+    resetCooldown(player) {
+        const base = this.def?.attack?.cooldown || 150;
+        const fireRateFactor = 1 - (player.droneFireRateBonus || 0);
+        this.fireCooldown = Math.max(8, Math.round(base * player.maxCooldown / CONFIG.PLAYER.MAX_COOLDOWN * fireRateFactor));
     }
     update(player) {
         this.orbitAngle += this.speed;
@@ -270,7 +274,6 @@ class Drone {
         this.y = player.y + Math.sin(this.orbitAngle) * this.dist;
         if (this.fireCooldown > 0) {
             this.fireCooldown--;
-            // 버서커: HP 30% 이하 시 추가 감소 (플레이어 공격속도와 동일)
             if (player.has.berserk && player.hp <= player.maxHp * 0.3) this.fireCooldown--;
         }
     }
@@ -278,29 +281,17 @@ class Drone {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.orbitAngle + Math.PI / 2);
-
-        // 드론 본체 (마름모/다이아몬드 형태)
         ctx.beginPath();
         ctx.moveTo(0, -this.radius * 1.5);
         ctx.lineTo(this.radius, 0);
         ctx.lineTo(0, this.radius * 1.5);
         ctx.lineTo(-this.radius, 0);
         ctx.closePath();
-
-        ctx.fillStyle = '#111';
-        ctx.fill();
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = this.color;
-        ctx.stroke();
-
-        // 코어 발광 (흰색 소형 원)
-        ctx.beginPath();
-        ctx.arc(0, 0, 3, 0, Math.PI * 2);
-        ctx.fillStyle = '#fff';
-        ctx.fill();
-
+        ctx.fillStyle = '#111'; ctx.fill();
+        ctx.strokeStyle = this.color; ctx.lineWidth = 2;
+        ctx.shadowBlur = 15; ctx.shadowColor = this.color; ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff'; ctx.fill();
         ctx.restore();
     }
 }
@@ -308,10 +299,12 @@ class Drone {
 class Enemy {
     constructor(x, y, type, playerLevel, game) {
         this.x = x; this.y = y; this.type = type;
-        const infiniteBonus = game && game.infiniteModeActive ? 1 + Math.max(0, playerLevel - 30) * 0.04 : 1;
+        const elapsedMinutes = game?.infiniteElapsedMinutes ?? 0;
+        const infiniteBonus = game?.infiniteModeActive ? Math.pow(1.15, elapsedMinutes) : 1;
         this.speed = (Math.random() * 1 + 1.5 + (playerLevel * 0.08));
         this.maxHp = (10 + (playerLevel - 1) * 8) * infiniteBonus;
         this.radius = 10; this.color = '#f00'; this.knockbackResist = 1;
+        this.contactDamage = 10 + Math.floor(playerLevel / 10) * 2;
 
         if (type === 'ranged') {
             this.color = '#0ff'; this.radius = 12; this.speed *= 0.8; this.maxHp *= 0.8;
@@ -635,13 +628,40 @@ class Bullet {
     }
     update() {
         this.x += this.vx; this.y += this.vy;
+        if (this.isShuriken) this.spinAngle = (this.spinAngle || 0) + 0.25;
         if (this.x < -50 || this.x > CONFIG.CANVAS_WIDTH + 50 || this.y < -50 || this.y > CONFIG.CANVAS_HEIGHT + 50) this.isAlive = false;
     }
     draw(ctx) {
         ctx.save();
-        ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fillStyle = this.color; ctx.shadowBlur = 15; ctx.shadowColor = this.color;
-        ctx.fill(); ctx.restore();
+        if (this.isShuriken) {
+            const r = this.size * 1.5;
+            const inner = r * 0.32;
+            const blades = 4;
+            const isBomb = this.isBombShuriken;
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.spinAngle || 0);
+            ctx.shadowBlur = isBomb ? 28 : 18;
+            ctx.shadowColor = this.isCrit ? '#fff' : (isBomb ? '#ff4400' : '#a0f0ff');
+            ctx.fillStyle = this.isCrit ? '#ffffff' : (isBomb ? '#ff8800' : '#c8f8ff');
+            ctx.beginPath();
+            for (let i = 0; i < blades; i++) {
+                const a = (Math.PI * 2 / blades) * i;
+                const aL = a - 0.55;
+                const aR = a + 0.55;
+                ctx.lineTo(Math.cos(aL) * inner, Math.sin(aL) * inner);
+                ctx.lineTo(Math.cos(a) * r,     Math.sin(a) * r);
+                ctx.lineTo(Math.cos(aR) * inner, Math.sin(aR) * inner);
+            }
+            ctx.closePath(); ctx.fill();
+            // 중심 원
+            ctx.beginPath(); ctx.arc(0, 0, inner * 0.8, 0, Math.PI * 2);
+            ctx.fillStyle = this.isCrit ? '#aef' : (isBomb ? '#ff2200' : '#60c0d0'); ctx.fill();
+        } else {
+            ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fillStyle = this.color; ctx.shadowBlur = 15; ctx.shadowColor = this.color;
+            ctx.fill();
+        }
+        ctx.restore();
     }
 }
 

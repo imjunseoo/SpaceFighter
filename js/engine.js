@@ -13,61 +13,24 @@ class InputHandler {
 
 class SkillManager {
     constructor() { this.attacks = []; this.particles = []; this.floatingTexts = []; }
-    triggerAttack(player) {
-        let radius = player.attackRange / 1.5;
-        let damage = player.attackDamage;
-        let isFullCircle = false;
-        let isLinear = false;
-
-        if (player.job === 'overload') {
-            isFullCircle = true;
-        } else if (player.job === 'swordman' || player.job === 'swordmaster') {
-            player.combo = (player.combo % 3) + 1;
-            player.comboTimer = 60;
-
-            if (player.combo === 2) {
-                radius *= 2.0;
-                damage *= 1.4;
-                isLinear = true;
-            } else if (player.combo === 3) {
-                if (player.job === 'swordmaster') {
-                    // 소드마스터: 차징 진입 — 실제 폭발은 chargeReady 시 발동
-                    player.charging = true;
-                    player.chargeTimer = 25;
-                    return;
-                }
-                radius *= 2.5;
-                damage *= 2.2;
-                isFullCircle = true;
-            } else {
-                damage *= 1.1;
-            }
-        }
-
-        const cx = player.x + (isFullCircle ? 0 : player.dirX * (player.attackRange / 2));
-        const cy = player.y + (isFullCircle ? 0 : player.dirY * (player.attackRange / 2));
-        // 서지 캐소드: 활성화 중이면 무조건 크리, 그 후 타이머 소모
-        const isCrit = player.surgeCritActive || Math.random() < player.critChance;
-        let finalDamage = damage;
-        if (isCrit) {
-            finalDamage = damage * player.critMultiplier;
-            // 서지 캐소드 중첩 보너스 (스택당 +10)
-            finalDamage += player.surgeCathodeStacks * 10;
-            if (player.surgeCritActive) { player.surgeCritActive = false; player.surgeCritTimer = 0; }
-        }
-
+    pushMeleeAttack(player, radius, damage, isFullCircle, arcAngle) {
+        const isCrit = Math.random() < player.critChance;
+        const finalDamage = isCrit ? damage * player.critMultiplier : damage;
+        const cx = player.x + (isFullCircle ? 0 : player.dirX * (radius / 2));
+        const cy = player.y + (isFullCircle ? 0 : player.dirY * (radius / 2));
         this.attacks.push({
             x: cx, y: cy,
-            radius: radius,
+            radius,
             angle: Math.atan2(player.dirY, player.dirX),
             life: 12, maxLife: 12,
             damage: finalDamage,
             isCrit,
-            isFullCircle,
-            isLinear,
-            combo: player.combo,
+            isFullCircle: !!isFullCircle,
+            isLinear: false,
+            arcAngle: arcAngle || Math.PI / 1.5,
             hitTargets: new Set()
         });
+        return isCrit;
     }
     createParticles(x, y, color) {
         for (let i = 0; i < 8; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10, life: 1.0, decay: Math.random() * 0.05 + 0.05, color, size: Math.random() * 3 + 1 });
@@ -90,7 +53,7 @@ class SkillManager {
                 ctx.save();
                 ctx.translate(atk.x - (Math.cos(atk.angle) * atk.radius / 2), atk.y - (Math.sin(atk.angle) * atk.radius / 2));
                 ctx.rotate(atk.angle);
-                ctx.rect(0, -20, atk.radius, 40);
+                ctx.rect(0, -(atk.halfWidth||20), atk.radius, (atk.halfWidth||20)*2);
                 ctx.restore();
             } else if (atk.isFullCircle) {
                 ctx.arc(atk.x, atk.y, atk.radius, 0, Math.PI * 2);
@@ -98,14 +61,14 @@ class SkillManager {
                 ctx.arc(atk.x, atk.y, atk.radius, atk.angle - Math.PI / 1.5, atk.angle + Math.PI / 1.5);
             }
 
-            let strokeColor = `rgba(0, 255, 255, ${atk.life / atk.maxLife})`;
-            if (atk.combo === 3) strokeColor = `rgba(255, 0, 255, ${atk.life / atk.maxLife})`;
-            else if (atk.combo === 2) strokeColor = `rgba(255, 255, 255, ${atk.life / atk.maxLife})`;
-
-            ctx.lineWidth = 15 * (atk.life / atk.maxLife);
+            const alpha = atk.life / atk.maxLife;
+            const strokeColor = atk.isFullCircle
+                ? `rgba(255, 0, 255, ${alpha})`
+                : `rgba(0, 255, 255, ${alpha})`;
+            ctx.lineWidth = 15 * alpha;
             ctx.strokeStyle = strokeColor;
             ctx.shadowBlur = 20;
-            ctx.shadowColor = atk.combo === 3 ? '#f0f' : (atk.combo === 2 ? '#fff' : '#0ff');
+            ctx.shadowColor = atk.isFullCircle ? '#f0f' : '#0ff';
             ctx.stroke();
             ctx.shadowBlur = 0;
         });
@@ -147,35 +110,35 @@ class Game {
             this.ui.startBtn.onclick = (e) => {
                 e.preventDefault();
                 this.ui.startBtn.blur();
-                this.ui.mainOverlay.classList.add('hidden');
-                this.ui.gameUILayer.classList.remove('hidden');
-                this.canvas.classList.remove('hidden');
-                this.audioManager.init(); // 오디오 컨텍스트 초기화 (자동 재생 우회)
-                this.init();
-                if (!this.loopStarted) {
-                    this.loopStarted = true;
-                    this.lastFrameTime = performance.now();
-                    requestAnimationFrame((t) => this.loop(t)); // 게임 메인 루프 실행 시작
+                const doStart = () => {
+                    this.ui.mainOverlay.classList.add('hidden');
+                    this.ui.gameUILayer.classList.remove('hidden');
+                    this.canvas.classList.remove('hidden');
+                    this.audioManager.init();
+                    this.init();
+                    if (!this.loopStarted) {
+                        this.loopStarted = true;
+                        this.lastFrameTime = performance.now();
+                        requestAnimationFrame((t) => this.loop(t));
+                    }
+                };
+                if (!localStorage.getItem('aria_tutorial_seen')) {
+                    this.showTutorial(doStart);
+                } else {
+                    doStart();
                 }
             };
         }
+        const btnTutorial = document.getElementById('btn-tutorial');
+        if (btnTutorial) btnTutorial.onclick = (e) => { e.preventDefault(); this.showTutorial(null); };
 
         this.ui.resumeBtn.onclick = () => { this.ui.resumeBtn.blur(); if (this.state === 'PAUSED_MENU') this.togglePause(); };
         this.ui.restartBtn.onclick = () => {
             this.ui.restartBtn.blur();
             if (this.state === 'PAUSED_MENU') {
-                this.togglePause();
-                this.state = 'TITLE';
-                this.audioManager.stopBGM();
                 this.ui.pauseMenu.classList.add('hidden');
-                this.ui.gameUILayer.classList.add('hidden');
-                this.canvas.classList.add('hidden');
-                this.ui.mainOverlay.classList.remove('hidden');
-                const title = this.ui.mainOverlay.querySelector('h1');
-                const desc = this.ui.mainOverlay.querySelector('p');
-                if (title) title.innerText = "CYBER SURVIVOR";
-                if (desc) desc.innerHTML = "이동: 방향키 (Arrow Keys)<br>공격: Z 키 (전방 범위 공격)<br>회피: Spacebar (무적 대시)";
-                this.ui.startBtn.innerText = "MISSION_START";
+                this.player.hp = 0;
+                this.triggerGameOver();
             }
         };
         window.addEventListener('keydown', (e) => this.handleUIKeys(e));
@@ -185,6 +148,26 @@ class Game {
         document.getElementById('dev-lvup5').onclick = () => { if (this.player) { for (let i = 0; i < 5; i++) { this.player.level++; } this.player.exp = 0; this.showLevelUpMenu(); this.updateDevInfo(); } };
         document.getElementById('dev-hp').onclick = () => { if (this.player) { this.player.hp = this.player.maxHp; this.updateHUD(); this.updateDevInfo(); } };
         document.getElementById('dev-kill-all').onclick = () => { this.enemies.forEach(e => { this.skillManager.createParticles(e.x, e.y, e.color); this.score++; }); this.enemies = []; this.updateHUD(); this.updateDevInfo(); };
+        document.getElementById('dev-arondight').onclick = () => {
+            if (!this.player) return;
+            const def = ARTIFACT_POOL.find(a => a.id === 'arondight');
+            if (!def) return;
+            this.player.weaponArtifact = { defId: 'arondight', category: 'weapon', stacks: 10, cooldown: 0 };
+            const idx = this.player.artifacts.findIndex(a => a.category === 'weapon');
+            if (idx >= 0) this.player.artifacts[idx] = this.player.weaponArtifact;
+            else this.player.artifacts.push(this.player.weaponArtifact);
+            this.updateHUD(); this.updateArtifactTray(); this.updateDevInfo();
+        };
+        document.getElementById('dev-excalibur').onclick = () => {
+            if (!this.player) return;
+            const def = ARTIFACT_POOL.find(a => a.id === 'excalibur');
+            if (!def) return;
+            this.player.weaponArtifact = { defId: 'excalibur', category: 'weapon', stacks: 15, cooldown: 0 };
+            const idx = this.player.artifacts.findIndex(a => a.category === 'weapon');
+            if (idx >= 0) this.player.artifacts[idx] = this.player.weaponArtifact;
+            else this.player.artifacts.push(this.player.weaponArtifact);
+            this.updateHUD(); this.updateArtifactTray(); this.updateDevInfo();
+        };
 
         const btnAchieve = document.getElementById('btn-achievements');
         if (btnAchieve) {
@@ -288,20 +271,85 @@ class Game {
 
         // 기획서 [Step 3.1] 에 따라 페이지 로드 시 즉시 루프가 실행되지 않도록 여기서 requestAnimationFrame을 호출하지 않습니다.
     }
+    showTutorial(onComplete) {
+        const STEPS = [
+            '안녕, 파일럿. 나는 <b style="color:#00daf3">MIKU</b> — 당신을 지원하는 전술 보조야. 간단하게 작전 브리핑을 시작할게.',
+            '<b style="color:#00daf3">방향키</b>로 이동해. 끊임없이 움직이는 게 생존의 핵심이야. 멈추면 죽어.',
+            '<b style="color:#00daf3">Z 키</b>로 전방을 공격해. 게임 시작 시 무기를 선택하고, 레벨업 때마다 강화할 수 있어.',
+            '<b style="color:#00daf3">스페이스바</b>로 대시해. 대시 중엔 완전 무적이니까 위기 탈출이나 적 사이를 파고들 때 써.',
+            '레벨업하면 <b style="color:#ffba38">아티팩트 카드</b>가 등장해. 무기를 강화하거나 보조 도구를 획득할 수 있어. 5스택마다 무기가 진화해.',
+            '<b style="color:#ff4444">Lv.15</b>에 1차 보스, <b style="color:#ff4444">Lv.30</b>에 2차 보스가 출현해. 그 전까지 최대한 강해져야 해.',
+            '좋아, 준비됐지? 두려움은 전장에 두고 와, 파일럿. 살아서 돌아와.',
+        ];
+        const overlay = document.getElementById('tutorial-overlay');
+        const textEl = document.getElementById('tutorial-text');
+        const dotsEl = document.getElementById('tutorial-dots');
+        if (!overlay) { onComplete?.(); return; }
+        overlay.classList.remove('hidden');
+        overlay.style.pointerEvents = 'auto';
+        try { const sfx = new Audio('Sound/Mikudayo sound.mp3'); sfx.volume = 0.8; sfx.play(); } catch(e) {}
+        let step = 0;
+        let typeTimer = null;
+        dotsEl.innerHTML = STEPS.map((_, i) => `<div id="tdot-${i}" style="width:6px;height:6px;border-radius:50%;background:rgba(0,218,243,0.22);transition:background 0.2s;"></div>`).join('');
+        const updateDots = (i) => STEPS.forEach((_, j) => {
+            const d = document.getElementById(`tdot-${j}`);
+            if (d) d.style.background = j === i ? '#00daf3' : j < i ? 'rgba(0,218,243,0.45)' : 'rgba(0,218,243,0.18)';
+        });
+        const typeWrite = (html) => {
+            if (typeTimer) clearTimeout(typeTimer);
+            // strip tags for char count, then reveal progressively
+            const tmp = document.createElement('div'); tmp.innerHTML = html;
+            const plain = tmp.textContent;
+            let i = 0;
+            const tick = () => {
+                i = Math.min(i + 3, plain.length);
+                // reveal html proportionally
+                const frac = i / plain.length;
+                const visLen = Math.round(html.length * frac);
+                textEl.innerHTML = html.slice(0, visLen);
+                if (i < plain.length) typeTimer = setTimeout(tick, 18);
+            };
+            textEl.innerHTML = '';
+            tick();
+        };
+        const showStep = (i) => { updateDots(i); typeWrite(STEPS[i]); };
+        const close = () => {
+            if (typeTimer) clearTimeout(typeTimer);
+            overlay.classList.add('hidden');
+            overlay.style.pointerEvents = 'none';
+            localStorage.setItem('aria_tutorial_seen', '1');
+            window.removeEventListener('keydown', keyHandler);
+            onComplete?.();
+        };
+        const advance = () => {
+            if (typeTimer) { clearTimeout(typeTimer); typeTimer = null; textEl.innerHTML = STEPS[step]; return; }
+            step++;
+            if (step >= STEPS.length) close();
+            else showStep(step);
+        };
+        const keyHandler = (e) => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); advance(); } };
+        window.addEventListener('keydown', keyHandler);
+        document.getElementById('tutorial-panel').onclick = advance;
+        document.getElementById('tutorial-skip').onclick = (e) => { e.stopPropagation(); close(); };
+        showStep(0);
+    }
     init() {
         this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
         this.enemies = []; this.gems = []; this.items = []; this.enemyProjectiles = []; this.score = 0; this.frameCount = 0; this.gameTime = 0;
         this.bossSpawned = false; this.bossDefeated = false; this.bossWarning = false;
         this.boss2Warning = false; this.boss2Spawned = false; this.boss2Defeated = false;
-        this.infiniteModeActive = false;
+        this.infiniteModeActive = false; this.infiniteElapsedMinutes = 0;
         this.shockwave = null; this.recoveryShockwave = null; this.recoveryShockwaveUsed = false;
-        this.bullets = []; this.droneMissiles = []; this.missileQueue = []; this.advancementShown = false; this.advancementPending = false;
+        this.bullets = []; this.droneMissiles = []; this.missileQueue = [];
+        this.pendingEvents = []; this.screenShake = null; this.chargeEffect = null;
         this.infiniteAmbushTimer = 0; this.infiniteAmbushPending = false;
         this.updateHUD();
         this.ui.levelup.classList.add('hidden');
-        this.state = 'PLAYING';
+        this.state = 'PAUSED';
         this.ui.acquiredSkills.innerHTML = '';
+        this.updateArtifactTray();
         this.audioManager.startBGM();
+        this.showWeaponSelectMenu();
     }
     spawnEnemy() {
         const lv = this.player.level;
@@ -374,21 +422,28 @@ class Game {
             this.enemies.push(new Enemy(x2, y2, type2, lv, this));
         }
     }
+    showWeaponSelectMenu() {
+        this.ui.levelup.classList.remove('hidden');
+        this.ui.levelup.querySelector('h2').textContent = 'SELECT WEAPON';
+        this.ui.cards.innerHTML = '';
+        const weapons = ARTIFACT_POOL.filter(a => a.category === 'weapon' && a.tier === 1);
+        weapons.forEach((art, index) => {
+            const card = document.createElement('div'); card.className = 'skill-card grade-gold';
+            card.innerHTML = `<div class="grade-badge gold">WEAPON</div><div class="skill-icon">${art.icon}</div><div class="skill-info"><div class="skill-title">${art.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${art.desc}</div></div>`;
+            card.onclick = () => {
+                this.player.applyUpgrade(art.id);
+                this.ui.levelup.querySelector('h2').textContent = 'SYSTEM UPGRADE';
+                this.ui.levelup.classList.add('hidden');
+                this.ui.cards.innerHTML = '';
+                this.updateHUD(); this.updateArtifactTray();
+                this.state = 'PLAYING';
+            };
+            this.ui.cards.appendChild(card);
+        });
+    }
     showLevelUpMenu() {
-        if (this.advancementPending) return; // 2차 전직 대기 중이면 일반 카드 창 열지 않음
         this.state = 'PAUSED'; this.ui.levelup.classList.remove('hidden'); this.ui.cards.innerHTML = '';
         this.audioManager.playLevelUp();
-
-        // 1차 직업 선택 (Lv.5)
-        if (this.player.level === 5 && !this.player.job) {
-            JOB_POOL.filter(j => j.tier === 1).forEach((skill, index) => {
-                const card = document.createElement('div'); card.className = 'skill-card grade-gold';
-                card.innerHTML = `<div class="grade-badge gold">JOB</div><div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${skill.desc}</div></div>`;
-                card.onclick = () => { this.player.applyUpgrade(skill.id); this.addAcquiredSkillUI(skill); this.ui.levelup.classList.add('hidden'); this.ui.cards.innerHTML = ''; this.updateHUD(); this.state = 'PLAYING'; };
-                this.ui.cards.appendChild(card);
-            });
-            return;
-        }
 
         // 레벨별 등급 확률 결정
         const lv = this.player.level;
@@ -408,26 +463,86 @@ class Game {
             }
         };
 
-        // Prism 이미 획득한 스킬은 풀에서 제거
-        const availablePool = SKILL_POOL.filter(s => !(s.unique && this.player.has[s.id]));
+        // 후보 풀 구성
+        const abilityPool = SKILL_POOL.filter(s => !(s.unique && this.player.has[s.id]));
+
+        // 아티팩트 풀 구성
+        const weaponDefId = this.player.weaponArtifact?.defId;
+        const weaponDef = weaponDefId ? ARTIFACT_POOL.find(a => a.id === weaponDefId) : null;
+
+        // 도구: 현재 장착 중인 도구(티어 무관) + 미획득 T1 도구
+        const equippedToolIds = new Set(
+            this.player.artifacts.filter(a => ARTIFACT_POOL.find(x => x.id === a.defId)?.category === 'tool').map(a => a.defId)
+        );
+        const toolDefs = [
+            ...Array.from(equippedToolIds).map(id => ARTIFACT_POOL.find(a => a.id === id)).filter(Boolean),
+            ...ARTIFACT_POOL.filter(a => a.tier === 1 && a.category === 'tool' && !equippedToolIds.has(a.id))
+        ];
+
+        // 드론: 5대 미만이거나 진화 가능한 경우만 표시
+        const droneArt = this.player.artifacts.find(a => ARTIFACT_POOL.find(x => x.id === a.defId)?.category === 'drone');
+        const droneDef = droneArt ? ARTIFACT_POOL.find(a => a.id === droneArt.defId) : null;
+        const droneDefs = droneArt
+            ? (this.player.drones.length < 5 || droneDef?.evolves_to ? [droneDef].filter(Boolean) : [])
+            : ARTIFACT_POOL.filter(a => a.tier === 1 && a.category === 'drone');
+
+        const availableArtifacts = [
+            ...(weaponDef ? [weaponDef] : []),
+            ...toolDefs,
+            ...droneDefs
+        ];
 
         const picks = [];
         for (let i = 0; i < 3; i++) {
+            // 50% 확률로 아티팩트 vs 어빌리티
+            const useArtifact = availableArtifacts.length > 0 && Math.random() < 0.5;
+            if (useArtifact) {
+                const artCandidates = availableArtifacts.filter(a => !picks.includes(a));
+                if (artCandidates.length > 0) {
+                    picks.push(artCandidates[Math.floor(Math.random() * artCandidates.length)]);
+                    continue;
+                }
+            }
             let grade = rollGrade();
-            // 해당 등급 후보
-            let candidates = availablePool.filter(s => s.grade === grade && !picks.includes(s));
-            // 후보 없으면 등급 다운
-            if (candidates.length === 0) { grade = grade === 'prism' ? 'gold' : grade === 'gold' ? 'silver' : 'bronze'; candidates = availablePool.filter(s => s.grade === grade && !picks.includes(s)); }
-            if (candidates.length === 0) candidates = availablePool.filter(s => !picks.includes(s));
+            let candidates = abilityPool.filter(s => s.grade === grade && !picks.includes(s));
+            if (candidates.length === 0) { grade = grade === 'prism' ? 'gold' : grade === 'gold' ? 'silver' : 'bronze'; candidates = abilityPool.filter(s => s.grade === grade && !picks.includes(s)); }
+            if (candidates.length === 0) candidates = abilityPool.filter(s => !picks.includes(s));
             if (candidates.length === 0) break;
             picks.push(candidates[Math.floor(Math.random() * candidates.length)]);
         }
 
         picks.forEach((skill, index) => {
-            const gradeLabel = { bronze: '🥉 BRONZE', silver: '🥈 SILVER', gold: '🥇 GOLD', prism: '💎 PRISM' }[skill.grade] || '';
-            const card = document.createElement('div'); card.className = `skill-card grade-${skill.grade}`;
-            card.innerHTML = `<div class="grade-badge ${skill.grade}">${gradeLabel}</div><div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${skill.desc}</div></div>`;
-            card.onclick = () => { this.player.applyUpgrade(skill.id); this.addAcquiredSkillUI(skill); this.ui.levelup.classList.add('hidden'); this.ui.cards.innerHTML = ''; this.updateHUD(); this.state = 'PLAYING'; };
+            const isArt = !!skill.category;
+            // 아티팩트: 현재 스택 확인하여 강화 수치 동적 표시
+            let displayDesc = skill.desc;
+            if (isArt && (skill.category === 'weapon' || skill.category === 'tool')) {
+                const existing = this.player.artifacts.find(a => a.defId === skill.id);
+                const stacks = existing ? existing.stacks : 0;
+                if (stacks > 0) {
+                    let bonus = ` <span style="color:#4ade80">[+${stacks * 10}% 강화 중`;
+                    if (skill.category === 'tool') bonus += `, +${stacks * 2} 크기`;
+                    bonus += `]</span>`;
+                    displayDesc = skill.desc + bonus;
+                }
+            }
+            const catLabel = { weapon: '🗡️ WEAPON', tool: '🔧 TOOL', drone: '🤖 DRONE' }[skill.category] || '';
+            const gradeLabel = isArt ? catLabel : ({ bronze: '🥉 BRONZE', silver: '🥈 SILVER', gold: '🥇 GOLD', prism: '💎 PRISM' }[skill.grade] || '');
+            const gradeClass = isArt ? (skill.category === 'drone' ? 'silver' : 'gold') : skill.grade;
+            const card = document.createElement('div'); card.className = `skill-card grade-${gradeClass}`;
+            card.innerHTML = `<div class="grade-badge ${gradeClass}">${gradeLabel}</div><div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${displayDesc}</div></div>`;
+            card.onclick = () => {
+                this.player.applyUpgrade(skill.id);
+                if (!isArt) this.addAcquiredSkillUI(skill);
+                this.ui.levelup.classList.add('hidden'); this.ui.cards.innerHTML = '';
+                this.updateHUD(); this.updateArtifactTray();
+                // 진화 연출 확인
+                if (this.player.pendingEvolution) {
+                    this.triggerEvolution(this.player.pendingEvolution);
+                    this.player.pendingEvolution = null;
+                } else {
+                    this.state = 'PLAYING';
+                }
+            };
             this.ui.cards.appendChild(card);
         });
     }
@@ -469,6 +584,41 @@ class Game {
         for (let y = 0; y <= this.canvas.height; y += 40) { const off = (this.frameCount * 0.5) % 40; this.ctx.moveTo(0, y + off); this.ctx.lineTo(this.canvas.width, y + off); }
         this.ctx.stroke();
         if (this.state === 'TITLE') { if (this.player) this.player.draw(this.ctx, this.frameCount); return; }
+        if (this.state === 'EVOLVING') {
+            this.gems.forEach(g => g.draw(this.ctx));
+            this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y));
+            this.player.draw(this.ctx, this.frameCount);
+            this.skillManager.updateAndDraw(this.ctx);
+            // 진화 오버레이 렌더링
+            if (this._evoData) {
+                this._evoTimer = (this._evoTimer || 0) + 1;
+                const prog = Math.min(1, this._evoTimer / 20);
+                const ctx = this.ctx;
+                ctx.save();
+                ctx.globalAlpha = prog * 0.75;
+                ctx.fillStyle = '#0a0020';
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                ctx.globalAlpha = prog;
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 90px Consolas';
+                ctx.shadowBlur = 60; ctx.shadowColor = '#a78bfa';
+                ctx.fillStyle = '#fff';
+                ctx.fillText(this._evoData.icon, this.canvas.width / 2, this.canvas.height / 2 - 40);
+                ctx.font = 'bold 48px Consolas';
+                ctx.shadowColor = '#0ff';
+                ctx.fillStyle = '#0ff';
+                ctx.fillText('ARTIFACT EVOLVED!', this.canvas.width / 2, this.canvas.height / 2 + 40);
+                ctx.font = 'bold 28px Consolas';
+                ctx.fillStyle = '#a78bfa';
+                ctx.fillText(this._evoData.name, this.canvas.width / 2, this.canvas.height / 2 + 90);
+                ctx.restore();
+                if (this._evoTimer >= 70) {
+                    this.state = 'PLAYING';
+                    this._evoData = null; this._evoTimer = 0;
+                }
+            }
+            return;
+        }
         if (this.state === 'PLAYER_DYING') {
             this.gems.forEach(g => g.draw(this.ctx)); this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); this.enemyProjectiles.forEach(p => p.draw(this.ctx));
             if (--this.player.deathTimer <= 0) {
@@ -489,107 +639,140 @@ class Game {
         if (this.state === 'GAMEOVER') { this.gems.forEach(g => g.draw(this.ctx)); this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); this.enemyProjectiles.forEach(p => p.draw(this.ctx)); this.skillManager.updateAndDraw(this.ctx); return; }
         if (this.state === 'PAUSED' || this.state === 'PAUSED_MENU') { this.gems.forEach(g => g.draw(this.ctx)); this.enemies.forEach(e => e.draw(this.ctx, this.player.x, this.player.y)); this.enemyProjectiles.forEach(p => p.draw(this.ctx)); this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx); return; }
         this.frameCount++; if (this.frameCount % 60 === 0) { this.gameTime++; this.updateHUD(); }
+        // 스크린 쉐이크
+        if (this.screenShake && this.screenShake.duration > 0) {
+            this.canvas.style.transform = `translate(${(Math.random()-0.5)*this.screenShake.intensity}px,${(Math.random()-0.5)*this.screenShake.intensity}px)`;
+            if (--this.screenShake.duration <= 0) { this.screenShake = null; this.canvas.style.transform = ''; }
+        }
         // 인피니티 모드 돌발 이벤트 — 3분(10800프레임)마다 위협 발생
         if (this.infiniteModeActive && !this.infiniteAmbushPending) {
             this.infiniteAmbushTimer++;
             if (this.infiniteAmbushTimer >= 10800) { this.infiniteAmbushTimer = 0; this.triggerInfiniteAmbush(); }
         }
+        // pendingEvents 처리
+        for (let i = this.pendingEvents.length - 1; i >= 0; i--) {
+            const ev = this.pendingEvents[i];
+            if (--ev.timer <= 0) { ev.fn(); this.pendingEvents.splice(i, 1); }
+        }
         this.player.update(this.input);
 
-        // 소드마스터 차징 완료 — 광범위 폭발 발동
-        if (this.player.chargeReady) {
-            this.player.chargeReady = false;
-            this.player.combo = 0;
-            const p = this.player;
-            const isCrit = Math.random() < p.critChance;
-            const chargeDmg = p.attackDamage * 7.0;
-            const finalChargeDmg = isCrit ? chargeDmg * p.critMultiplier : chargeDmg;
-            this.skillManager.attacks.push({
-                x: p.x, y: p.y, radius: p.attackRange * 2, angle: 0,
-                life: 20, maxLife: 20, damage: finalChargeDmg, isCrit, isFullCircle: true, isLinear: false,
-                combo: 3, hitTargets: new Set()
-            });
-            for (let k = 0; k < 3; k++) this.skillManager.createParticles(p.x, p.y, k % 2 === 0 ? '#f0f' : '#fff');
-            this.audioManager.playChargeRelease();
-        }
-
-        // Z키: 거너/데스페라도는 자동조준 사용 (Z키 근접 공격 제외)
-        if (this.input.keys.z && this.player.cooldown <= 0) {
-            const isGunner = this.player.job === 'gunner' || this.player.job === 'desperado';
-            if (!isGunner) {
-                this.skillManager.triggerAttack(this.player);
-                // 소드마스터 차징 진입 시 빌드업 사운드, 그 외 일반 슬래쉬
-                if (this.player.charging && this.player.chargeTimer === 25) {
-                    this.audioManager.playChargeStart();
-                } else {
-                    this.audioManager.playSwordSlash();
+        // Z키: 무기 아티팩트 기반 공격
+        if (this.input.keys.z && this.player.cooldown <= 0 && this.player.weaponArtifact) {
+            const weapDef = ARTIFACT_POOL.find(a => a.id === this.player.weaponArtifact.defId);
+            if (weapDef) {
+                const atk = weapDef.attack;
+                const multishot = 0;
+                if (atk.type === 'melee_arc') {
+                    this.triggerArtifactMeleeArc(atk, multishot);
+                } else if (atk.type === 'full_circle') {
+                    this.triggerArtifactFullCircle(atk);
+                } else if (atk.type === 'bullet') {
+                    this.triggerArtifactBullet(atk, multishot);
+                } else if (atk.type === 'x_shape') {
+                    this.triggerXShape(atk);
+                } else if (atk.type === 'x_linger_explode') {
+                    this.triggerXLingerExplode(atk);
+                } else if (atk.type === 'cross_combo') {
+                    this.triggerCrossCombo(atk);
+                } else if (atk.type === 'cross_ultimate') {
+                    this.triggerCrossUltimate(atk);
+                } else if (atk.type === 'bullet_burst') {
+                    this.triggerBulletBurst(atk, multishot);
+                } else if (atk.type === 'piercing_laser') {
+                    this.triggerPiercingLaser(atk);
                 }
-                this.player.cooldown = this.player.maxCooldown;
-            }
-        }
-
-        // 거너 / 데스페라도: Z키 홀드 시 자동 조준 사격
-        if ((this.player.job === 'gunner' || this.player.job === 'desperado') && this.input.keys.z && this.player.cooldown <= 0) {
-            let nearest = null, nearestDist = Infinity;
-            this.enemies.forEach(e => { const d = Utils.dist(this.player.x, this.player.y, e.x, e.y); if (d < nearestDist) { nearestDist = d; nearest = e; } });
-            if (nearest) {
-                const angle = Utils.angle(this.player.x, this.player.y, nearest.x, nearest.y);
-                const isDesp = this.player.job === 'desperado';
-                // 크리티컬 계산 (근접공격과 동일 메커니즘)
-                const isCrit = this.player.surgeCritActive || Math.random() < this.player.critChance;
-                let bDmg = isDesp ? this.player.attackDamage * 1.8 : this.player.attackDamage;
-                if (isCrit) {
-                    bDmg = bDmg * this.player.critMultiplier + this.player.surgeCathodeStacks * 10;
-                    if (this.player.surgeCritActive) { this.player.surgeCritActive = false; this.player.surgeCritTimer = 0; }
-                }
-                const bSize = isDesp ? 10 : 5; const bSpeed = isDesp ? 20 : 15;
-                const bColor = isCrit ? '#fff' : (isDesp ? '#ff6600' : '#ff0');
-                this.bullets.push(new Bullet(this.player.x, this.player.y, angle, bDmg, bColor, bSpeed, bSize, isCrit));
-                this.player.cooldown = this.player.maxCooldown;
+                this.player.cooldown = atk.cooldown;
                 this.audioManager.playSwordSlash();
             }
         }
+        // 무한 모드 경과 시간 추적 (매 60초마다 증가)
+        if (this.infiniteModeActive && this.frameCount % 3600 === 0) {
+            this.infiniteElapsedMinutes++;
+            if (this.infiniteElapsedMinutes % 5 === 0) this.showToast(`THREAT LEVEL ${this.infiniteElapsedMinutes}`, '⚠️');
+        }
         const baseInterval = Math.max(25, 60 - (this.player.level * 2));
-        const infiniteInterval = 20 + Math.max(0, (this.player.level - 30) * 2);
+        const infiniteInterval = Math.max(8, 20 - Math.floor(this.infiniteElapsedMinutes * 1.5));
         const spawnInterval = this.infiniteModeActive ? infiniteInterval
                             : this.bossDefeated ? Math.max(12, Math.floor(baseInterval / 2))
                             : baseInterval;
         if (this.frameCount % spawnInterval === 0) this.spawnEnemy();
         this.enemyProjectiles.forEach((p, i) => { p.update(this.player, this); p.draw(this.ctx); if (p.state === 'DONE') this.enemyProjectiles.splice(i, 1); });
 
-        // 메카닉/사이버: 드론 유도 미사일 (cooldown 기반, maxCooldown 비율 스케일)
-        if (this.player.job === 'mecha' || this.player.job === 'cyber') {
-            this.player.drones.forEach(d => {
-                if (!d.readyToFire) return;
-                let closest = null, closestDist = 350;
+        // 드론 아티팩트 공격 처리 (ArtifactDrone 기반)
+        this.player.drones.forEach(d => {
+            if (!d.readyToFire) return;
+            const def = d.def?.attack;
+            if (!def) return;
+            const range = def.range || 350;
+            if (def.type === 'drone_missile') {
+                // 불법 드론: 사거리 내 가장 가까운 적 1명 유도 미사일
+                let closest = null, closestDist = range;
                 this.enemies.forEach(e => {
                     const dd = Utils.dist(d.x, d.y, e.x, e.y);
                     if (dd < closestDist) { closestDist = dd; closest = e; }
                 });
                 if (closest) {
-                    this.missileQueue.push({ framesLeft: 0, drone: d, target: closest, ratio: 0.5 });
+                    const count = this.player.droneBulletCount;
+                    for (let k = 0; k < count; k++)
+                        this.missileQueue.push({ framesLeft: k * 4, drone: d, target: closest, ratio: def.damageRatio });
                 }
-                d.resetCooldown(150, this.player);
-            });
-        }
-
-        // 오버로드: 융단 포격 - 45프레임마다 무작위 적 3~5명 동시 록온, 데미지 70~80%
-        if (this.player.job === 'overload') {
-            this.player.drones.forEach(d => {
-                if (!d.readyToFire) return;
-                const count = Math.floor(Math.random() * 3) + 3; // 3~5발
-                const nearby = this.enemies.filter(e => Utils.dist(d.x, d.y, e.x, e.y) < 600)
-                    .sort(() => Math.random() - 0.5); // 무작위 순서
-                for (let k = 0; k < count; k++) {
+            } else if (def.type === 'drone_carpet') {
+                // 군용 드론: burstCount개 무작위 타겟 동시 발사
+                const burstCount = (def.burstCount || 4) + this.player.droneBulletCount - 1;
+                const nearby = this.enemies.filter(e => Utils.dist(d.x, d.y, e.x, e.y) < range)
+                    .sort(() => Math.random() - 0.5);
+                for (let k = 0; k < burstCount; k++) {
                     const tgt = k < nearby.length
                         ? nearby[k]
                         : { x: Math.random() * CONFIG.CANVAS_WIDTH, y: Math.random() * CONFIG.CANVAS_HEIGHT };
-                    const ratio = 0.7 + Math.random() * 0.1; // 70~80%
-                    this.missileQueue.push({ framesLeft: k * 3, drone: d, target: tgt, ratio });
+                    this.missileQueue.push({ framesLeft: k * 3, drone: d, target: tgt, ratio: def.damageRatio });
                 }
-                d.resetCooldown(45, this.player);
+            }
+            d.resetCooldown(this.player);
+        });
+
+        // 도구(Tool) 아티팩트 자동 사격
+        this.player.artifacts.filter(a => a.category === 'tool').forEach(toolArt => {
+            const def = ARTIFACT_POOL.find(d => d.id === toolArt.defId);
+            if (!def) return;
+            if (toolArt.cooldown > 0) { toolArt.cooldown--; return; }
+            const atk = def.attack;
+            const cooldown = Math.max(15, Math.round(atk.cooldown * (1 - this.player.toolFireRateBonus)));
+            // 사거리 내 가장 가까운 적 탐색
+            let nearest = null, nearestDist = atk.range || 350;
+            this.enemies.forEach(e => {
+                const dd = Utils.dist(this.player.x, this.player.y, e.x, e.y);
+                if (dd < nearestDist) { nearestDist = dd; nearest = e; }
             });
-        }
+            if (nearest) {
+                const stacks = toolArt.stacks || 1;
+                const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+                const finalSize = atk.size + (stacks - 1) * 2;
+                const baseAngle = Utils.angle(this.player.x, this.player.y, nearest.x, nearest.y);
+                const isCrit = Math.random() < this.player.critChance;
+                const dmg = Math.floor(this.player.attackDamage * effectiveRatio * (isCrit ? this.player.critMultiplier : 1));
+                const count = this.player.toolBulletCount || 1;
+                const spreadStep = 0.2;
+                for (let k = 0; k < count; k++) {
+                    const offset = count > 1 ? (k - (count - 1) / 2) * spreadStep : 0;
+                    const angle = baseAngle + offset;
+                    if (atk.type === 'auto_aoe_bullet') {
+                        // 폭발 수리검: 폭발 투사체
+                        const b = new Bullet(this.player.x, this.player.y, angle, dmg, isCrit ? '#fff' : '#f80', atk.speed, finalSize, isCrit);
+                        b.aoeRadius = atk.aoeRadius;
+                        b.isAoe = true;
+                        if (toolArt.defId === 'bomb_shuriken') { b.isShuriken = true; b.spinAngle = 0; b.isBombShuriken = true; }
+                        this.bullets.push(b);
+                    } else {
+                        const sb = new Bullet(this.player.x, this.player.y, angle, dmg, isCrit ? '#fff' : '#ffe050', atk.speed, finalSize, isCrit, !!atk.piercing);
+                        if (toolArt.defId === 'shuriken') { sb.isShuriken = true; sb.spinAngle = 0; }
+                        this.bullets.push(sb);
+                    }
+                }
+                this.audioManager.playMissileLaunch();
+            }
+            toolArt.cooldown = cooldown;
+        });
 
         // 발사 큐 처리 — 프레임마다 카운트다운, 0 되면 실제 발사
         for (let i = this.missileQueue.length - 1; i >= 0; i--) {
@@ -699,10 +882,10 @@ class Game {
                         else if (atk.isLinear) {
                             const dx = e.x - (atk.x - Math.cos(atk.angle) * atk.radius / 2), dy = e.y - (atk.y - Math.sin(atk.angle) * atk.radius / 2);
                             const rx = dx * Math.cos(-atk.angle) - dy * Math.sin(-atk.angle), ry = dx * Math.sin(-atk.angle) + dy * Math.cos(-atk.angle);
-                            if (rx > 0 && rx < atk.radius && Math.abs(ry) < 40 + e.radius) isHit = true;
+                            if (rx > 0 && rx < atk.radius && Math.abs(ry) < (atk.halfWidth||20) + e.radius) isHit = true;
                         } else {
                             let diff = Math.abs(atk.angle - a); if (diff > Math.PI) diff = Math.PI * 2 - diff;
-                            if (diff < Math.PI / 1.5) isHit = true;
+                            if (diff < (atk.arcAngle || Math.PI / 1.5)) isHit = true;
                         }
                         if (isHit) {
                             if (atk.hitTargets.has(e)) continue;
@@ -750,15 +933,16 @@ class Game {
                 if (b.hitTargets.has(e)) continue;
                 if (Utils.dist(b.x, b.y, e.x, e.y) < e.radius + b.size) {
                     b.hitTargets.add(e);
-                    // 데스페라도: 적중 지점에 원형 폭발 AOE (processHit 전에 좌표 캡처)
-                    if (this.player.job === 'desperado') {
-                        this.skillManager.attacks.push({
-                            x: e.x, y: e.y, radius: this.player.attackRange,
-                            angle: 0, life: 12, maxLife: 12, damage: b.damage * 0.6,
-                            isCrit: b.isCrit, isFullCircle: true, isLinear: false,
-                            combo: 0, hitTargets: new Set([e])
-                        });
-                        this.skillManager.createParticles(e.x, e.y, '#ff6600');
+                    // AoE 탄 (폭발 수리검 등): 범위 피해
+                    if (b.isAoe && b.aoeRadius) {
+                        for (let jj = this.enemies.length - 1; jj >= 0; jj--) {
+                            const ae = this.enemies[jj];
+                            if (Utils.dist(b.x, b.y, ae.x, ae.y) < b.aoeRadius) {
+                                if (this.processHit(ae, b.damage, b.isCrit, '#f80', false)) this.enemies.splice(jj, 1);
+                            }
+                        }
+                        this.skillManager.createParticles(b.x, b.y, '#f80');
+                        b.isAlive = false; break;
                     }
                     if (this.processHit(e, b.damage, b.isCrit, b.color)) this.enemies.splice(j, 1);
                     if (!b.piercing) { b.isAlive = false; break; }
@@ -766,30 +950,41 @@ class Game {
             }
         }
 
-        // 소드마스터 차징 VFX (외부에서 수렴하는 원 — 에너지가 안쪽으로 모임)
-        if (this.player.charging) {
-            const progress = 1 - this.player.chargeTimer / 25; // 0 → 1
-            this.ctx.save();
-            // 반지름: 100 → 20 (수축), 선 두께·밝기: 진입할수록 강해짐
-            this.ctx.beginPath(); this.ctx.arc(this.player.x, this.player.y, 100 - progress * 80, 0, Math.PI * 2);
-            this.ctx.strokeStyle = `rgba(255,0,255,${0.3 + progress * 0.65})`;
-            this.ctx.lineWidth = 3 + progress * 7; this.ctx.shadowBlur = 30; this.ctx.shadowColor = '#f0f';
-            this.ctx.stroke(); this.ctx.restore();
-        }
-
         this.player.draw(this.ctx, this.frameCount); this.skillManager.updateAndDraw(this.ctx);
+        // 엑스칼리버 차징 이펙트
+        if (this.chargeEffect) {
+            this.chargeEffect.frames++;
+            const progress = Math.min(1, this.chargeEffect.frames / this.chargeEffect.maxFrames);
+            const pulse = 0.5 + 0.5 * Math.sin(progress * Math.PI * 14);
+            const ctx = this.ctx;
+            ctx.save();
+            // 확장하는 링 3겹
+            for (let r = 0; r < 3; r++) {
+                const rp = (progress + r / 3) % 1;
+                ctx.beginPath();
+                ctx.arc(this.player.x, this.player.y, 22 + rp * 130, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255,255,200,${(1 - rp) * 0.7 * pulse})`;
+                ctx.lineWidth = 2 + rp * 5;
+                ctx.shadowBlur = 20; ctx.shadowColor = '#fffaaa';
+                ctx.stroke();
+            }
+            // 중심 글로우
+            ctx.beginPath();
+            ctx.arc(this.player.x, this.player.y, 14 + progress * 28, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,255,255,${progress * 0.35 * pulse})`;
+            ctx.shadowBlur = 40; ctx.shadowColor = '#fff';
+            ctx.fill();
+            ctx.restore();
+        }
     }
     explodeMissile(m) {
         // 폭발 파티클
         for (let k = 0; k < 5; k++) this.skillManager.createParticles(m.x, m.y, k % 2 === 0 ? '#f7d774' : '#f80');
         if (!this.playedExplosionThisFrame) { this.audioManager.playMissileExplosion(); this.playedExplosionThisFrame = true; }
-        // 크리티컬 판정 (폭발 시점의 실시간 공격력 적용)
-        const isCrit = this.player.surgeCritActive || Math.random() < this.player.critChance;
+        // 크리티컬 판정
+        const isCrit = Math.random() < this.player.critChance;
         let dmg = this.player.attackDamage * m.damageRatio;
-        if (isCrit) {
-            dmg = dmg * this.player.critMultiplier + (this.player.surgeCathodeStacks || 0) * 10;
-            if (this.player.surgeCritActive) { this.player.surgeCritActive = false; this.player.surgeCritTimer = 0; }
-        }
+        if (isCrit) dmg *= this.player.critMultiplier;
         dmg = Math.floor(dmg);
         // AoE 범위 내 적에게 일반공격과 동일한 processHit 적용
         for (let i = this.enemies.length - 1; i >= 0; i--) {
@@ -816,8 +1011,6 @@ class Game {
                 this.showToast('ACHIEVEMENT UNLOCKED: BOSS SLAYER', '🏆');
                 this.showToast('PHASE 2: VOID EROSION BEGINS', '🌌');
                 if (typeof firebaseDB !== 'undefined') firebaseDB.updateAchievement('BOSS_SLAYER');
-                this.advancementPending = true;
-                setTimeout(() => { this.advancementPending = false; this.showAdvancementMenu(); }, 1500);
             }
         } else if (e.type === 'glitch_weaver' && !this.boss2Defeated) {
             this.boss2Defeated = true; this.infiniteModeActive = true;
@@ -830,6 +1023,15 @@ class Game {
             this.gems.push(new Gem(e.x, e.y, gv));
         }
         this.score++;
+        this.player.killCount++;
+        if (this.player.has.kill_atk && this.player.killCount % 100 === 0) {
+            this.player.attackDamage++;
+            this.skillManager.createFloatingText(this.player.x, this.player.y - 30, 'ATK +1', false, '#fbbf24');
+        }
+        if (this.player.has.kill_hp && this.player.killCount % 100 === 0) {
+            this.player.maxHp += 100;
+            this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+100 MAX HP', false, '#4ade80');
+        }
         if (this.player.vampireChance > 0 && Math.random() < this.player.vampireChance && this.player.hp < this.player.maxHp) {
             this.player.hp = Math.min(this.player.maxHp, this.player.hp + 3);
             this.skillManager.createFloatingText(this.player.x, this.player.y - 20, '+3', false, '#4ade80');
@@ -871,32 +1073,240 @@ class Game {
             if (drawLine) this.drawLightningLine(source.x, source.y, t.x, t.y);
         });
     }
-    showAdvancementMenu() {
-        if (this.advancementShown) return;
-        const jobMap = { 'swordman': 'install_sword', 'gunner': 'install_gunner', 'mecha': 'install_mecha' };
-        const req = jobMap[this.player.job];
-        if (!req) return; // 직업 없거나 이미 2차 전직 상태
-        const advancement = JOB_POOL.filter(j => j.tier === 2 && j.requires === req);
-        if (advancement.length === 0) return;
-        this.advancementShown = true;
-        this.audioManager.playLevelUp();
-        this.state = 'PAUSED';
-        this.ui.levelup.classList.remove('hidden');
-        this.ui.levelup.classList.add('advancement-active');
-        this.ui.levelup.querySelector('h2').textContent = 'JOB ADVANCEMENT';
-        this.ui.cards.innerHTML = '';
-        advancement.forEach((skill, index) => {
-            const card = document.createElement('div'); card.className = 'skill-card grade-prism';
-            card.innerHTML = `<div class="grade-badge prism">2차 전직</div><div class="skill-icon">${skill.icon}</div><div class="skill-info"><div class="skill-title">${skill.name} <span style="font-size:0.8em; color:#0ff; margin-left:10px;">[${index + 1}키]</span></div><div class="skill-desc">${skill.desc}</div></div>`;
-            card.onclick = () => {
-                this.player.applyUpgrade(skill.id); this.addAcquiredSkillUI(skill);
-                this.ui.levelup.classList.remove('advancement-active');
-                this.ui.levelup.querySelector('h2').textContent = 'SYSTEM UPGRADE';
-                this.ui.levelup.classList.add('hidden'); this.ui.cards.innerHTML = ''; this.updateHUD(); this.state = 'PLAYING';
-            };
-            this.ui.cards.appendChild(card);
+    triggerArtifactMeleeArc(atk, multishot) {
+        const p = this.player;
+        const range = atk.range + p.attackRange - CONFIG.PLAYER.ATTACK_RANGE;
+        const stacks = p.weaponArtifact?.stacks || 1;
+        const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+        const count = 1 + (multishot || 0);
+        for (let i = 0; i < count; i++) {
+            const angleOffset = (i - (count - 1) / 2) * 0.3;
+            const isCrit = Math.random() < p.critChance;
+            const finalDmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
+            const angle = Math.atan2(p.dirY, p.dirX) + angleOffset;
+            this.skillManager.attacks.push({
+                x: p.x + Math.cos(angle) * (range / 2),
+                y: p.y + Math.sin(angle) * (range / 2),
+                radius: range, angle, arcAngle: atk.arc || Math.PI / 1.5,
+                life: 12, maxLife: 12, damage: finalDmg, isCrit,
+                isFullCircle: false, isLinear: false, hitTargets: new Set()
+            });
+            if (isCrit) this.applyChainLightning({ x: p.x, y: p.y });
+        }
+    }
+    triggerArtifactFullCircle(atk) {
+        const p = this.player;
+        const range = atk.range + (p.attackRange - CONFIG.PLAYER.ATTACK_RANGE) * 0.5;
+        const stacks = p.weaponArtifact?.stacks || 1;
+        const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+        const isCrit = Math.random() < p.critChance;
+        const finalDmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
+        this.skillManager.attacks.push({
+            x: p.x, y: p.y, radius: range, angle: 0,
+            life: 14, maxLife: 14, damage: finalDmg, isCrit,
+            isFullCircle: true, isLinear: false, hitTargets: new Set()
         });
-        this.showToast('2차 전직 가능!', '⚡');
+        if (isCrit) this.applyChainLightning({ x: p.x, y: p.y });
+    }
+    triggerArtifactBullet(atk, multishot) {
+        const p = this.player;
+        let nearest = null, nearestDist = Infinity;
+        this.enemies.forEach(e => { const d = Utils.dist(p.x, p.y, e.x, e.y); if (d < nearestDist) { nearestDist = d; nearest = e; } });
+        if (!nearest) return;
+        const count = 1 + (multishot || 0);
+        const stacks = p.weaponArtifact?.stacks || 1;
+        const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+        for (let i = 0; i < count; i++) {
+            const angleOffset = (i - (count - 1) / 2) * 0.15;
+            const baseAngle = Utils.angle(p.x, p.y, nearest.x, nearest.y) + angleOffset;
+            const isCrit = Math.random() < p.critChance;
+            const dmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
+            const color = isCrit ? '#fff' : '#ff0';
+            this.bullets.push(new Bullet(p.x, p.y, baseAngle, dmg, color, atk.speed, atk.size, isCrit));
+            if (isCrit) this.applyChainLightning(nearest, true);
+        }
+    }
+    triggerXShape(atk) {
+        const p = this.player;
+        const stacks = p.weaponArtifact?.stacks || 1;
+        const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+        const range = atk.range + p.attackRange - CONFIG.PLAYER.ATTACK_RANGE;
+        const baseAngle = Math.atan2(p.dirY, p.dirX);
+        for (let i = 0; i < 2; i++) {
+            const angle = baseAngle + (i === 0 ? Math.PI / 4 : -Math.PI / 4);
+            const isCrit = Math.random() < p.critChance;
+            const finalDmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
+            this.skillManager.attacks.push({ x: p.x, y: p.y, radius: range, angle, life: 14, maxLife: 14, damage: finalDmg, isCrit, isFullCircle: false, isLinear: true, hitTargets: new Set() });
+            if (isCrit) this.applyChainLightning({ x: p.x, y: p.y });
+        }
+    }
+    triggerXLingerExplode(atk) {
+        const p = this.player;
+        const stacks = p.weaponArtifact?.stacks || 1;
+        const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+        const range = atk.range + p.attackRange - CONFIG.PLAYER.ATTACK_RANGE;
+        const baseAngle = Math.atan2(p.dirY, p.dirX);
+        const px = p.x, py = p.y;
+        for (let i = 0; i < 2; i++) {
+            const angle = baseAngle + (i === 0 ? Math.PI / 4 : -Math.PI / 4);
+            const isCrit = Math.random() < p.critChance;
+            const finalDmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
+            this.skillManager.attacks.push({ x: px, y: py, radius: range, angle, life: 30, maxLife: 30, damage: finalDmg, isCrit, isFullCircle: false, isLinear: true, hitTargets: new Set() });
+        }
+        const expRatio = atk.explosionRatio || 5.0;
+        const expRadius = atk.explosionRadius || 220;
+        this.pendingEvents.push({ timer: 30, fn: () => {
+            const isCrit = Math.random() < p.critChance;
+            const expDmg = Math.floor(p.attackDamage * expRatio * (isCrit ? p.critMultiplier : 1));
+            for (let j = this.enemies.length - 1; j >= 0; j--) {
+                if (Utils.dist(px, py, this.enemies[j].x, this.enemies[j].y) < expRadius)
+                    if (this.processHit(this.enemies[j], expDmg, isCrit, '#f80')) this.enemies.splice(j, 1);
+            }
+            for (let k = 0; k < 10; k++) this.skillManager.createParticles(px + (Math.random()-0.5)*expRadius, py + (Math.random()-0.5)*expRadius, k%2===0?'#f80':'#ff0');
+            this.audioManager.playMissileExplosion();
+            this.screenShake = { duration: 20, intensity: 8 };
+        }});
+    }
+    triggerCrossCombo(atk) {
+        const p = this.player;
+        const stacks = p.weaponArtifact?.stacks || 1;
+        const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+        const range = atk.range + p.attackRange - CONFIG.PLAYER.ATTACK_RANGE;
+        const px = p.x, py = p.y;
+        // 1타: 전체 범위 원형 (기본 검)
+        const isCrit1 = Math.random() < p.critChance;
+        const dmg1 = Math.floor(p.attackDamage * effectiveRatio * (isCrit1 ? p.critMultiplier : 1));
+        this.skillManager.attacks.push({ x: px, y: py, radius: range, angle: 0, life: 14, maxLife: 14, damage: dmg1, isCrit: isCrit1, isFullCircle: true, isLinear: false, hitTargets: new Set() });
+        if (isCrit1) this.applyChainLightning({ x: px, y: py });
+        // 2타: 십자가 (수평 + 수직 선형) — 화면 크기 기준 대형 십자가
+        const crossRadius = CONFIG.CANVAS_HEIGHT * 0.9;
+        this.pendingEvents.push({ timer: 10, fn: () => {
+            this.audioManager.playCrossSlash();
+            const isCrit2 = Math.random() < p.critChance;
+            const dmg2 = Math.floor(p.attackDamage * effectiveRatio * (isCrit2 ? p.critMultiplier : 1));
+            this.skillManager.attacks.push({ x: px, y: py, radius: crossRadius, angle: 0,          life: 14, maxLife: 14, damage: dmg2, isCrit: isCrit2, isFullCircle: false, isLinear: true, halfWidth: 50, hitTargets: new Set() });
+            this.skillManager.attacks.push({ x: px, y: py, radius: crossRadius, angle: Math.PI / 2, life: 14, maxLife: 14, damage: dmg2, isCrit: isCrit2, isFullCircle: false, isLinear: true, halfWidth: 50, hitTargets: new Set() });
+            if (isCrit2) this.applyChainLightning({ x: px, y: py });
+        }});
+    }
+    triggerCrossUltimate(atk) {
+        const p = this.player;
+        const stacks = p.weaponArtifact?.stacks || 1;
+        const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+        const slashRatio = atk.slashRatio || 6.0;
+        const range = atk.range + p.attackRange - CONFIG.PLAYER.ATTACK_RANGE;
+        const px = p.x, py = p.y;
+        // 차징 시간: 무기 쿨타임 × 2.5, 버서커 활성 시 절반
+        const berserkActive = p.has.berserk && p.hp <= p.maxHp * 0.3;
+        const chargeFrames = Math.round(atk.cooldown * 2.5 * (berserkActive ? 0.5 : 1));
+        // 1타: 전체 범위 원형
+        const isCrit1 = Math.random() < p.critChance;
+        const dmg1 = Math.floor(p.attackDamage * effectiveRatio * (isCrit1 ? p.critMultiplier : 1));
+        this.skillManager.attacks.push({ x: px, y: py, radius: range, angle: 0, life: 14, maxLife: 14, damage: dmg1, isCrit: isCrit1, isFullCircle: true, isLinear: false, hitTargets: new Set() });
+        // 2타: 십자가 + 차징 시작
+        const crossRadius = CONFIG.CANVAS_HEIGHT * 0.9;
+        this.pendingEvents.push({ timer: 10, fn: () => {
+            this.audioManager.playCrossSlash();
+            const isCrit2 = Math.random() < p.critChance;
+            const dmg2 = Math.floor(p.attackDamage * effectiveRatio * (isCrit2 ? p.critMultiplier : 1));
+            this.skillManager.attacks.push({ x: px, y: py, radius: crossRadius, angle: 0,          life: 14, maxLife: 14, damage: dmg2, isCrit: isCrit2, isFullCircle: false, isLinear: true, halfWidth: 50, hitTargets: new Set() });
+            this.skillManager.attacks.push({ x: px, y: py, radius: crossRadius, angle: Math.PI / 2, life: 14, maxLife: 14, damage: dmg2, isCrit: isCrit2, isFullCircle: false, isLinear: true, halfWidth: 50, hitTargets: new Set() });
+            // 차징 이펙트 시작
+            this.chargeEffect = { frames: 0, maxFrames: chargeFrames };
+            this.audioManager.playChargeStart();
+            // 3타: 차징 완료 후 발동
+            this.pendingEvents.push({ timer: chargeFrames, fn: () => {
+                this.chargeEffect = null;
+                this.audioManager.playChargeRelease();
+                const slashAngle = Math.atan2(p.dirY, p.dirX);
+                const isCrit3 = Math.random() < p.critChance;
+                const dmg3 = Math.floor(p.attackDamage * slashRatio * (isCrit3 ? p.critMultiplier : 1));
+                this.skillManager.attacks.push({ x: CONFIG.CANVAS_WIDTH / 2, y: CONFIG.CANVAS_HEIGHT / 2, radius: CONFIG.CANVAS_WIDTH * 1.2, angle: slashAngle, life: 20, maxLife: 20, damage: 0, isCrit: isCrit3, isFullCircle: false, isLinear: true, hitTargets: new Set() });
+                this.screenShake = { duration: 30, intensity: 12 };
+                for (let j = this.enemies.length - 1; j >= 0; j--) {
+                    if (this.processHit(this.enemies[j], dmg3, isCrit3)) this.enemies.splice(j, 1);
+                }
+                if (isCrit3) this.applyChainLightning({ x: p.x, y: p.y });
+            }});
+        }});
+    }
+    triggerBulletBurst(atk, multishot) {
+        const p = this.player;
+        const stacks = p.weaponArtifact?.stacks || 1;
+        const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+        const burstCount = atk.burstCount || 3;
+        const count = 1 + (multishot || 0);
+        for (let b = 0; b < burstCount; b++) {
+            const delay = b * 5 + 1;
+            this.pendingEvents.push({ timer: delay, fn: () => {
+                let tgt = null, td = Infinity;
+                this.enemies.forEach(e => { const d = Utils.dist(p.x, p.y, e.x, e.y); if (d < td) { td = d; tgt = e; } });
+                if (!tgt) return;
+                for (let i = 0; i < count; i++) {
+                    const offset = count > 1 ? (i - (count-1)/2) * 0.15 : 0;
+                    const angle = Utils.angle(p.x, p.y, tgt.x, tgt.y) + offset;
+                    const isCrit = Math.random() < p.critChance;
+                    const dmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
+                    this.bullets.push(new Bullet(p.x, p.y, angle, dmg, isCrit ? '#fff' : '#ff0', atk.speed, atk.size, isCrit));
+                    if (isCrit) this.applyChainLightning(tgt, true);
+                }
+                this.audioManager.playMissileLaunch();
+            }});
+        }
+    }
+    triggerPiercingLaser(atk) {
+        const p = this.player;
+        let nearest = null, nd = Infinity;
+        this.enemies.forEach(e => { const d = Utils.dist(p.x, p.y, e.x, e.y); if (d < nd) { nd = d; nearest = e; } });
+        const angle = nearest ? Utils.angle(p.x, p.y, nearest.x, nearest.y) : Math.atan2(p.dirY, p.dirX);
+        const stacks = p.weaponArtifact?.stacks || 1;
+        const effectiveRatio = atk.damageRatio + (stacks - 1) * 0.1;
+        const isCrit = Math.random() < p.critChance;
+        const dmg = Math.floor(p.attackDamage * effectiveRatio * (isCrit ? p.critMultiplier : 1));
+        const laserRange = CONFIG.CANVAS_WIDTH * 1.5;
+        const aoeRadius = atk.aoeRadius || 70;
+        this.skillManager.attacks.push({ x: p.x + Math.cos(angle) * laserRange / 2, y: p.y + Math.sin(angle) * laserRange / 2, radius: laserRange, angle, life: 20, maxLife: 20, damage: dmg, isCrit, isFullCircle: false, isLinear: true, hitTargets: new Set() });
+        const steps = 10;
+        for (let s = 1; s <= steps; s++) {
+            const dist = (laserRange / steps) * s;
+            const ex = p.x + Math.cos(angle) * dist;
+            const ey = p.y + Math.sin(angle) * dist;
+            if (ex < -100 || ex > CONFIG.CANVAS_WIDTH + 100 || ey < -100 || ey > CONFIG.CANVAS_HEIGHT + 100) break;
+            for (let j = this.enemies.length - 1; j >= 0; j--) {
+                if (Utils.dist(ex, ey, this.enemies[j].x, this.enemies[j].y) < aoeRadius)
+                    if (this.processHit(this.enemies[j], Math.floor(dmg * 0.5), isCrit, '#0ff')) this.enemies.splice(j, 1);
+            }
+            this.skillManager.createParticles(ex, ey, isCrit ? '#fff' : '#0ff');
+        }
+        this.screenShake = { duration: 20, intensity: 7 };
+        this.audioManager.playMissileExplosion();
+    }
+    triggerEvolution(evoInfo) {
+        this.state = 'EVOLVING';
+        this._evoData = evoInfo;
+        this._evoTimer = 0;
+        // 파티클 — 파란색/금색 Shatter Particles
+        for (let i = 0; i < 3; i++) {
+            this.skillManager.createShatterParticles(this.player.x, this.player.y, i % 2 === 0 ? '#a78bfa' : '#fbbf24');
+        }
+        this.updateArtifactTray();
+    }
+    updateArtifactTray() {
+        const tray = document.getElementById('artifact-tray');
+        if (!tray || !this.player) return;
+        tray.innerHTML = '';
+        this.player.artifacts.forEach(art => {
+            const def = ARTIFACT_POOL.find(a => a.id === art.defId);
+            if (!def) return;
+            const el = document.createElement('div');
+            el.className = 'flex items-center gap-1 bg-surface-container/80 border border-primary/30 px-2 py-1 rounded text-xs font-headline';
+            const tierColor = def.tier === 4 ? '#ffffff' : def.tier === 3 ? '#f87171' : def.tier === 2 ? '#a78bfa' : '#fbbf24';
+            const bonusText = def.category === 'weapon' && art.stacks > 1
+                ? ` <span style="color:#4ade80">+${(art.stacks - 1) * 10}%</span>` : '';
+            const stackLabel = def.tier >= 2 ? `T${def.tier}` : `×${art.stacks}`;
+            el.innerHTML = `<span style="font-size:1.2em">${def.icon}</span><span style="color:${tierColor}">${def.name}</span><span style="color:#0ff">${stackLabel}</span>${bonusText}`;
+            tray.appendChild(el);
+        });
     }
     // ── 인피니티 모드 돌발 이벤트 ──────────────────────────────────────────────
     triggerInfiniteAmbush() {
@@ -1020,51 +1430,74 @@ class Game {
         const p = this.player, c = CONFIG.PLAYER;
         const diffHp = p.maxHp - c.MAX_HP;
         const diffAtk = p.attackDamage - c.ATTACK_DAMAGE;
-        const diffRange = Math.round(p.attackRange - c.ATTACK_RANGE);
         const diffSpd = parseFloat((p.speed - c.SPEED).toFixed(1));
         const plus = (v) => v > 0 ? ` <span style="color:#4ade80">(+${v})</span>` : '';
-        document.getElementById('pause-stats').innerHTML = `<div>HP: ${p.hp}/${p.maxHp}${plus(diffHp)}</div><div>ATK: ${p.attackDamage}${plus(diffAtk)}</div><div>RANGE: ${p.attackRange.toFixed(0)}${plus(diffRange)}</div><div>SPD: ${p.speed.toFixed(1)}${plus(diffSpd)}</div><div>CRIT: ${(p.critChance * 100).toFixed(0)}%${p.critChance > 0 ? plus((p.critChance * 100).toFixed(0)) : ''}</div>`;
-        // Pause 메뉴 스킬 리스트 심플하게 재구성
+        document.getElementById('pause-stats').innerHTML = `<div>HP: ${p.hp}/${p.maxHp}${plus(diffHp)}</div><div>ATK: ${p.attackDamage}${plus(diffAtk)}</div><div>SPD: ${p.speed.toFixed(1)}${plus(diffSpd)}</div><div>CRIT: ${(p.critChance * 100).toFixed(0)}%</div><div>KILLS: ${p.killCount}</div>`;
+
         const skillsContainer = document.getElementById('pause-skills');
         skillsContainer.innerHTML = '';
-        // 스크롤바 없이 획득 순서대로 나란히 배치 (Flex Wrap)
-        skillsContainer.className = "flex flex-wrap gap-4 overflow-visible w-full";
+        skillsContainer.className = "flex flex-col gap-6 overflow-visible w-full";
 
-        Array.from(this.ui.acquiredSkills.children).forEach(iconEl => {
-            const count = iconEl.dataset.count || 1;
-            const name = iconEl.dataset.name || 'Unknown Ability';
-            const tooltipText = iconEl.dataset.tooltip ? iconEl.dataset.tooltip.replace(/<[^>]+>/g, '') : '';
-            const iconHTML = iconEl.innerHTML.split('<span')[0];
-
+        const makeIcon = (iconHTML, name, levelText, borderColor, tooltipText) => {
             const item = document.createElement('div');
-            // 호버 시 스케일 업 및 커스텀 박스 툴팁 제공
-            item.className = "group relative flex items-center justify-center bg-surface-container-highest p-4 rounded-xl border border-outline-variant/30 hover:bg-primary hover:scale-110 transition-all duration-300 cursor-help shadow-lg";
-
+            item.className = "group relative flex items-center justify-center bg-surface-container-highest p-3 rounded-xl border hover:scale-110 transition-all duration-300 cursor-help shadow-lg";
+            item.style.borderColor = borderColor;
             item.innerHTML = `
-                <div class="text-4xl group-hover:text-surface transition-colors">${iconHTML}</div>
-                <div class="absolute -top-2 -right-2 bg-tertiary text-on-tertiary font-headline font-bold text-[10px] px-2 py-1 rounded-full shadow-md group-hover:bg-white group-hover:text-primary transition-colors">
-                    LV.${count}
-                </div>
-                <!-- 커스텀 박스 툴팁 UI (아이콘 위쪽 배치 - 표시 속성 안정화) -->
-                <div class="absolute bottom-[calc(100%+15px)] left-1/2 -translate-x-1/2 min-w-[200px] w-max max-w-[250px] p-3 bg-surface-container-high border border-primary/50 rounded-lg shadow-[0_5px_20px_rgba(0,0,0,0.8)] z-[999] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none">
-                    <div class="flex items-center gap-2 mb-2 border-b border-outline-variant/30 pb-2">
-                        <span class="text-2xl">${iconHTML}</span>
-                        <div class="text-primary font-headline font-bold text-sm tracking-widest uppercase">${name}</div>
-                    </div>
-                    <div class="text-on-surface/80 font-body text-[12px] leading-relaxed break-normal whitespace-normal">
-                        ${tooltipText || 'No description available.'}
-                    </div>
-                    <!-- 하단 중앙 화살표 -->
-                    <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-surface-container-high border-r border-b border-primary/50 rotate-45"></div>
-                </div>
-            `;
+                <div class="text-3xl">${iconHTML}</div>
+                <div class="absolute -top-2 -right-2 font-headline font-bold text-[10px] px-1.5 py-0.5 rounded-full" style="background:${borderColor};color:#000">${levelText}</div>
+                <div class="absolute bottom-[calc(100%+10px)] left-1/2 -translate-x-1/2 min-w-[180px] w-max max-w-[220px] p-2 bg-surface-container-high border border-primary/50 rounded-lg z-[99999] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none text-xs font-body text-on-surface/80">
+                    <div class="font-headline font-bold text-primary mb-1">${name}</div>${tooltipText}
+                    <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-surface-container-high border-r border-b border-primary/50 rotate-45"></div>
+                </div>`;
+            return item;
+        };
 
-            item.classList.add('acquired-icon');
-            skillsContainer.appendChild(item);
-        });
+        // ── ARTIFACTS 섹션 ──────────────────────────────────
+        if (p.artifacts.length > 0) {
+            const artHeader = document.createElement('div');
+            artHeader.className = "text-xs font-headline font-bold tracking-widest text-tertiary border-b border-tertiary/30 pb-1";
+            artHeader.textContent = '⚙ ARTIFACTS';
+            skillsContainer.appendChild(artHeader);
+            const artRow = document.createElement('div');
+            artRow.className = "flex flex-wrap gap-3";
+            p.artifacts.forEach(art => {
+                const def = ARTIFACT_POOL.find(a => a.id === art.defId);
+                if (!def) return;
+                const tierColor = def.tier === 4 ? '#ffffff' : def.tier === 3 ? '#f87171' : def.tier === 2 ? '#a78bfa' : '#fbbf24';
+                let bonusText = '';
+                if (art.stacks > 1) {
+                    if (def.category === 'weapon') bonusText = `<br><span style="color:#4ade80">+${(art.stacks - 1) * 10}% dmg</span>`;
+                    else if (def.category === 'tool') bonusText = `<br><span style="color:#4ade80">+${(art.stacks - 1) * 10}% dmg, +${(art.stacks - 1) * 2} 크기</span>`;
+                }
+                const levelText = def.tier >= 2 ? `T${def.tier}` : `×${art.stacks}`;
+                artRow.appendChild(makeIcon(def.icon, def.name, levelText, tierColor,
+                    def.desc.replace(/<[^>]+>/g, '') + bonusText));
+            });
+            skillsContainer.appendChild(artRow);
+        }
 
-        if (skillsContainer.children.length === 0) {
-            skillsContainer.innerHTML = '<div class="w-full text-on-surface/40 font-body text-center py-10">No Abilities Acquired</div>';
+        // ── ABILITIES 섹션 ──────────────────────────────────
+        const abilityIcons = Array.from(this.ui.acquiredSkills.children);
+        if (abilityIcons.length > 0) {
+            const abilHeader = document.createElement('div');
+            abilHeader.className = "text-xs font-headline font-bold tracking-widest text-primary border-b border-primary/30 pb-1";
+            abilHeader.textContent = '⚡ ABILITIES';
+            skillsContainer.appendChild(abilHeader);
+            const abilRow = document.createElement('div');
+            abilRow.className = "flex flex-wrap gap-3";
+            abilityIcons.forEach(iconEl => {
+                const count = iconEl.dataset.count || 1;
+                const name = iconEl.dataset.name || '';
+                const tooltipText = iconEl.dataset.tooltip ? iconEl.dataset.tooltip.replace(/<[^>]+>/g, '') : '';
+                const iconHTML = iconEl.innerHTML.split('<span')[0];
+                const borderColor = iconEl.style.borderColor || '#0ff';
+                abilRow.appendChild(makeIcon(iconHTML, name, `LV.${count}`, borderColor, tooltipText));
+            });
+            skillsContainer.appendChild(abilRow);
+        }
+
+        if (p.artifacts.length === 0 && abilityIcons.length === 0) {
+            skillsContainer.innerHTML = '<div class="text-on-surface/40 font-body text-center py-8">No Upgrades Acquired</div>';
         }
     }
     addAcquiredSkillUI(skill) {
